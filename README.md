@@ -1,6 +1,13 @@
 # X 分析工作台
 
-每周自动分析 X 账号 @0xfaheng 的数据，跟踪「原创内容奖励」资格进度，并给出下一周的调整建议。
+跨平台查看与分析 X 账号 @0xfaheng 的周报，跟踪「原创内容奖励」资格进度。程序只读 X，不发帖、不修改设置、不代填密码；下周建议由助手撰写。
+
+| 平台 | 日常入口 | 安装与运行 |
+|---|---|---|
+| macOS | 现有 Swift 原生 `X分析工作台.app` | 保持现有应用与 ego / mirasim 流程 |
+| Windows 10 / 11（64 位） | GitHub Releases 的安装包 | 下载 `XWorkbench-Setup-版本号.exe` → 安装 → 双击使用，无需 Python |
+
+Windows 用户请看 [Windows 安装与使用](docs/Windows安装与使用.md)。私有仓库先登录有访问权限的 GitHub 账号；安装包未签名，SmartScreen 提示时确认来源后点“更多信息 → 仍要运行”。也提供解压即用的便携版 ZIP。
 
 ## 日常使用：双击「X分析工作台.app」
 
@@ -19,7 +26,15 @@ macOS 默认通过 **ego lite 浏览器里已登录的 X 账号** 在后台读�
 
 Windows 通过 Python Playwright 驱动系统 Microsoft Edge，使用工作台独立配置目录，复用用户手动登录的账号。两个后端产出相同的原始文件，分析、渲染均在当前 Python 进程执行。程序只读，不输入账号密码、不发帖、不修改账号设置。
 
-## Windows 使用（命令行）
+## Windows 桌面版
+
+首次点“登录 X”，在专用 Edge 窗口手动登录目标账号，再点“仅更新数据”。左侧列出历史周报、门槛进度、目标达成及待写建议；右侧应用内显示报告，外部链接交给默认浏览器。每 20 秒刷新时保留当前选择，运行日志实时显示子进程输出。“重新生成网页”使用选中期已有数据，适合补写建议后刷新。
+
+“生成完整周报”仅在检测到 mirasim CLI（Windows 为 mirasim.exe），且 `app.mirasim_schedule_id`、有效本机 `app.mirasim_workspace`、`app.mirasim_port` 齐全时启用；否则提示“需要 mirasim，目前由 Mac 定时任务完成”。可把 report.md 交给任意 AI 按 [周报流程](docs/周报流程.md) 第 3 步写建议，再重新生成网页。
+
+桌面数据目录优先级：`XWB_ROOT` → 冻结程序同级有 config.json 的便携目录 → 源码运行的仓库根目录 → `~/Documents/X分析工作台`。首次只复制缺失的默认 config 和用户文档，创建 data/reports；升级、卸载均保留用户数据，默认浏览器配置随 root 放在 browser-profile 中。
+
+## 源码运行与命令行
 
 安装 Python 3.10 或更新版本，安装时勾选加入 PATH，并确认系统已安装 Microsoft Edge。在工作台根目录打开终端：
 
@@ -31,7 +46,9 @@ python scripts\run_weekly.py
 
 首次在弹出的专用浏览器里手动登录 `config.json` 中的账号。检测到目标 `@handle` 后自动关闭窗口；提前关闭且未确认登录时退出码为 3。以后复用 `browser-profile/` 中的登录态。`--login` 始终使用 Playwright 专用窗口，强制显示窗口，只处理登录，不采集或生成报告。
 
-默认 `channel="msedge"`，不需要 `playwright install` 或额外下载浏览器。没有 Edge 时请先安装 Edge；也可在本机配置中选择已安装的 `chrome`。只有将 `browser_channel` 设为 `""` 使用 Playwright Chromium 时，才需另行运行 `python -m playwright install chromium`。本轮仅提供运行层，Windows 桌面应用及 PyInstaller 打包在第 3 轮完成。
+默认 `channel="msedge"`，不需要 `playwright install` 或额外下载浏览器。没有 Edge 时请先安装 Edge；也可在本机配置中选择已安装的 `chrome`。只有将 `browser_channel` 设为 `""` 使用 Playwright Chromium 时，才需另行运行 `python -m playwright install chromium`。
+
+开发桌面界面可安装 `packaging/requirements-windows.txt`，运行 `python desktop/app.py`。冻结后任务入口为 `XWorkbench.exe --run-weekly <参数>`，源码为 `python desktop/app.py --run-weekly <参数>`，不初始化 WebView 窗口。
 
 常用参数（Mac 的 `.sh` 入口也原样透传）：
 
@@ -66,11 +83,29 @@ python scripts\run_weekly.py --backend playwright --root "D:\X分析工作台"
 |---|---|
 | 0 | 成功（登录模式已确认目标账号） |
 | 2 | 参数或配置错误 |
-| 3 | X 未登录目标账号；或登录窗口关闭但未确认登录 |
+| 3 | X 未登录目标账号；或登录窗口关闭但未确认登录；或登录超过 15 分钟 |
 | 4 | 采集失败、浏览器连接/页面异常，或分析渲染输入/文件错误 |
 | 5 | 缺少 markdown 依赖（Mac 包装找不到可用 Python 也返回 5） |
 | 6 | 缺少 Playwright，或找不到配置指定的 Edge/Chrome/Chromium |
 | 7 | 已有采集/分析或登录任务在运行 |
+
+## 开发者：测试与 Windows 构建
+
+```powershell
+python -m unittest discover -s tests
+./packaging/build_windows.ps1
+```
+
+构建脚本安装依赖、跑测试、PyInstaller onedir/windowed 构建、合成夹具冻结包冒烟、Inno Setup 安装包、便携 ZIP；输出 `dist/XWorkbench-Setup-版本号.exe` 与 `dist/XWorkbench-版本号-portable.zip`。不打包浏览器，Playwright 的 Node 驱动随包。找不到 Inno Setup 6 时用 Chocolatey 安装。
+
+普通离线测试不启动浏览器。仅明确设置 `XWB_BROWSER_TESTS=1` 时，`tests/test_collect_mock.py` 启动 headless 浏览器访问本地模拟站点；`XWB_BROWSER_CHANNEL` 默认为 msedge。CI 的 Windows 任务必须开启，Ubuntu 默认跳过。测试使用临时合成数据，覆盖资格图标、认证开关、CSV 下载、28D 受众和未登录退出码 3；不登录真实 X。
+
+## 开发者：发布新版本
+
+1. 修改唯一版本来源 `scripts/version.py`，并在 `CHANGELOG.md` 添加对应版本段落。
+2. 本地测试后提交修改，再执行 `git tag vX.Y.Z && git push --tags`（此前需已配置 GitHub 远程并推送代码）。
+3. Actions 在 Windows 上测试、构建并上传安装包与便携 ZIP，再从 CHANGELOG 提取该版本说明创建 Release。标签与版本不一致会直接失败。
+4. 手动运行 release 工作流只生成 artifact，不创建 Release。首发需检查 Actions、下载附件，并在真实 Windows 上完成首次登录及安装/升级/卸载验收。私有仓库的 Release 同样仅对有权限的账号开放。
 
 ## 其他
 
@@ -87,6 +122,13 @@ python scripts\run_weekly.py --backend playwright --root "D:\X分析工作台"
 |---|---|
 | `X分析工作台.app` | 桌面应用 |
 | `app/` | 应用源码、图标和编译脚本 |
+| `desktop/` | Python 桌面入口、可测试的任务/文件服务、中文 UI |
+| `packaging/` | 图标、PyInstaller spec、Inno Setup、Windows 构建与发布说明提取 |
+| `.github/workflows/` | 双平台测试、Windows 出包与标签发布 |
+| `scripts/version.py`、`CHANGELOG.md` | 共用版本号与中文更新记录 |
+| `tests/` | 合成夹具、离线单测及显式开启的模拟采集集成测试 |
+| `docs/` | 面向用户的 Windows 说明、策略和流程 |
+| `docs/开发记录/` | 不随安装包分发的开发与验证记录 |
 | `scripts/collect.mjs` | ego-browser 采集脚本（只读） |
 | `scripts/collect_playwright.py` | Playwright + 系统 Edge 采集后端（只读） |
 | `scripts/run_weekly.py` | 跨平台采集 + 同进程分析和网页生成入口 |

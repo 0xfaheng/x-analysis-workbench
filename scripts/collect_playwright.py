@@ -5,6 +5,7 @@ import re
 import socket
 import sys
 import tempfile
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -18,6 +19,7 @@ ACTION_TIMEOUT_MS = 25000
 DOWNLOAD_TIMEOUT_MS = 45000
 LOGIN_WAIT_MS = 25000
 LOGIN_POLL_MS = 1000
+LOGIN_TIMEOUT_SECONDS = 15 * 60
 ELIGIBILITY_WAIT_MS = 7000
 OVERVIEW_WAIT_MS = 8000
 CONTENT_WAIT_MS = 8000
@@ -315,18 +317,37 @@ def login(root, handle, config):
             closed = True
 
         context.on("close", on_close)
+        deadline = time.monotonic() + LOGIN_TIMEOUT_SECONDS
         try:
             page.goto(build_url(config.get("base_url", "https://x.com"), "home"))
-            while not closed and context.pages:
-                if page.is_closed():
-                    page = context.pages[0]
+        except Exception:
+            # 登录跳转、窗口关闭都可能中断首次导航；交由轮询判断。
+            pass
+        while not closed and time.monotonic() < deadline:
+            pages = [p for p in context.pages if not p.is_closed()]
+            if not pages:
+                try:
+                    # 新标签可能稍晚出现；继续泵送事件，等待真正的 context.close。
+                    context.wait_for_event("page", timeout=LOGIN_POLL_MS)
+                except Exception:
+                    pass
+                continue
+            page = pages[-1]
+            try:
                 if is_logged_in(account_text(page), handle):
                     print(f"已识别登录账号 @{handle}，登录态已保存在专用配置目录。")
                     return 0
+            except Exception:
+                # evaluate 在导航期会失去执行上下文；仅本次读取失败，不终止登录。
+                pass
+            try:
                 page.wait_for_timeout(LOGIN_POLL_MS)
-        except Exception:
-            if not closed and context.pages and not page.is_closed():
-                raise
+            except Exception:
+                # 标签页切换或关闭后，下一轮重新取得最新页。
+                time.sleep(0.05)
+        if not closed:
+            print("登录等待已超过 15 分钟，请重新点击「登录 X」。", file=sys.stderr)
+            return 3
         print("浏览器已关闭，尚未确认目标 X 账号登录。", file=sys.stderr)
         return 3
 

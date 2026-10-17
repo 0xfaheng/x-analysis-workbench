@@ -225,10 +225,22 @@ final class Workbench: ObservableObject {
             case 0:
                 setStatus("数据已更新。「下周调整建议」需要助手撰写，可点「生成完整周报」。")
             case 3:
-                setStatus("X 未登录：请在 ego 浏览器里登录 @\(config.handle) 后重试。", error: true)
+                setStatus("X 未登录：请登录 @\(config.handle) 后重试。", error: true)
                 showLog = true
             case 4:
-                setStatus("采集失败：请确认 ego lite 正在运行，详情见运行日志。", error: true)
+                setStatus("采集或分析失败：请检查浏览器运行状态，详情见运行日志。", error: true)
+                showLog = true
+            case 2:
+                setStatus("参数或配置错误：请检查 config.json，详情见运行日志。", error: true)
+                showLog = true
+            case 5:
+                setStatus("缺少 markdown 依赖：请安装依赖或重新安装工作台，详情见运行日志。", error: true)
+                showLog = true
+            case 6:
+                setStatus("缺少浏览器依赖：请安装 Microsoft Edge；仍失败时重新安装工作台，详情见运行日志。", error: true)
+                showLog = true
+            case 7:
+                setStatus("已有任务在运行：请等待采集、分析或登录任务结束后重试。", error: true)
                 showLog = true
             default:
                 setStatus("运行失败（退出码 \(code)），详情见运行日志。", error: true)

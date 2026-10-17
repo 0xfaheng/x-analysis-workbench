@@ -40,20 +40,31 @@ def post(text="AI 合成测试内容", day="2026-10-16", impressions=100, ident=
     return row
 
 
+def write_fixture(root):
+    root = Path(root)
+    raw = root / "data" / "raw" / REPORT_DATE
+    raw.mkdir(parents=True, exist_ok=True)
+    cfg = copy.deepcopy(json.loads((ROOT / "config.json").read_text(encoding="utf-8")))
+    cfg["handle"] = "test_account"
+    cfg.pop("app", None)
+    for path, value in ((root / "config.json", cfg),
+                        (raw / "meta.json", {"ok": True, "finished_at": "2026-10-17T01:00:00Z"})):
+        path.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8", newline="\n")
+    with (raw / "content_90d.csv").open("w", encoding="utf-8-sig", newline="\n") as stream:
+        writer = csv.DictWriter(stream, fieldnames=POST_COLUMNS, lineterminator="\n")
+        writer.writeheader()
+        writer.writerow(post())
+    return cfg
+
+
 class WorkspaceTest(unittest.TestCase):
     def setUp(self):
         temp = tempfile.TemporaryDirectory(prefix="x-workbench-test-")
         self.addCleanup(temp.cleanup)
         self.root = Path(temp.name)
         self.raw = self.root / "data" / "raw" / REPORT_DATE
-        self.raw.mkdir(parents=True)
         # 规则取项目配置，帖子、指标及账号均为合成数据。
-        self.cfg = copy.deepcopy(json.loads((ROOT / "config.json").read_text(encoding="utf-8")))
-        self.cfg["handle"] = "test_account"
-        self.cfg.pop("app", None)
-        self.write_json(self.root / "config.json", self.cfg)
-        self.write_json(self.raw / "meta.json", {"ok": True, "finished_at": "2026-10-17T01:00:00Z"})
-        self.write_posts([post()])
+        self.cfg = write_fixture(self.root)
 
     @property
     def report_dir(self):

@@ -190,6 +190,56 @@ class CollectorFileTests(WorkspaceTest):
             with self.assertRaisesRegex(RuntimeError, "关闭失败"):
                 cp.run_browser(self.root, "test_account", {}, lambda *_: 0)
 
+    def test_login_retries_navigation_errors_then_accepts_handle(self):
+        page, context = mock.Mock(), mock.Mock()
+        context.pages = [page]
+        page.is_closed.return_value = False
+        page.evaluate.side_effect = [RuntimeError("Execution context was destroyed"),
+                                     RuntimeError("Cannot find context with specified id"), "@test_account"]
+        with mock.patch("collect_playwright.run_browser", side_effect=lambda r, h, c, action, **kw: action(page, context)), \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(cp.login(self.root, "test_account", {}), 0)
+        self.assertEqual(page.evaluate.call_count, 3)
+
+    def test_login_tracks_newest_page_and_survives_old_page_closing(self):
+        old, new, context = mock.Mock(), mock.Mock(), mock.Mock()
+        context.pages = [old]
+        old.is_closed.return_value = False
+        new.is_closed.return_value = False
+        old.evaluate.side_effect = RuntimeError("Execution context was destroyed")
+        new.evaluate.return_value = "@test_account"
+
+        def new_tab(*_):
+            context.pages = [new]
+            old.is_closed.return_value = True
+            raise RuntimeError("Target page has been closed")
+        old.wait_for_timeout.side_effect = new_tab
+        with mock.patch("collect_playwright.run_browser", side_effect=lambda r, h, c, action, **kw: action(old, context)), \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(cp.login(self.root, "test_account", {}), 0)
+        new.evaluate.assert_called_once()
+
+    def test_login_times_out_as_not_logged_in(self):
+        page, context = mock.Mock(), mock.Mock()
+        context.pages = [page]
+        page.is_closed.return_value = False
+        with mock.patch("collect_playwright.run_browser", side_effect=lambda r, h, c, action, **kw: action(page, context)), \
+                mock.patch("collect_playwright.time.monotonic", side_effect=[0, 901, 901]), \
+                contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()) as err:
+            self.assertEqual(cp.login(self.root, "test_account", {}), 3)
+        self.assertIn("15 分钟", err.getvalue())
+
+    def test_login_waits_for_replacement_page_when_pages_temporarily_empty(self):
+        old, new, context = mock.Mock(), mock.Mock(), mock.Mock()
+        context.pages = []
+        new.is_closed.return_value = False
+        new.evaluate.return_value = "@test_account"
+        context.wait_for_event.side_effect = lambda *args, **kw: setattr(context, "pages", [new])
+        with mock.patch("collect_playwright.run_browser", side_effect=lambda r, h, c, action, **kw: action(old, context)), \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(cp.login(self.root, "test_account", {}), 0)
+        context.wait_for_event.assert_called_once_with("page", timeout=cp.LOGIN_POLL_MS)
+
 
 if __name__ == "__main__":
     unittest.main()

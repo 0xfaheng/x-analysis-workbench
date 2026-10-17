@@ -7,6 +7,7 @@ ROOT="${APP_DIR:h}"
 BUILD="$APP_DIR/build"
 APP="$ROOT/X分析工作台.app"
 EXE="XWorkbench"
+VERSION="$(python3 "$ROOT/scripts/version.py")"
 
 rm -rf "$BUILD"
 mkdir -p "$BUILD"
@@ -40,8 +41,8 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleName</key><string>X分析工作台</string>
   <key>CFBundleDisplayName</key><string>X分析工作台</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>1.0.0</string>
-  <key>CFBundleVersion</key><string>1</string>
+  <key>CFBundleShortVersionString</key><string>$VERSION</string>
+  <key>CFBundleVersion</key><string>$VERSION</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>NSHighResolutionCapable</key><true/>
