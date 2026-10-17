@@ -3,6 +3,7 @@ data/
 reports/
 index.html
 config.local.json
+browser-profile/
 
 # 构建产物
 X分析工作台.app/

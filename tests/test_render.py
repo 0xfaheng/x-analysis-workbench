@@ -41,6 +41,7 @@ class PageParser(HTMLParser):
             self.scripts[-1] += data
 
 
+@unittest.skipUnless(render, "需要可选的 markdown 依赖")
 class RenderTests(WorkspaceTest):
     def test_no_reports_is_friendly_error(self):
         for make_directory in (False, True):

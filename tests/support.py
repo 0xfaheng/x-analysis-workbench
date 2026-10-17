@@ -12,7 +12,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 import analyze
-import render
+try:
+    import render
+except ModuleNotFoundError as error:
+    if error.name != "markdown":
+        raise
+    render = None
 
 REPORT_DATE = "2026-10-17"
 POST_COLUMNS = ["Post id", "Date", "Post text", "Post Link", "Impressions", "Likes",

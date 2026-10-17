@@ -1,4 +1,5 @@
 import os
+import stat
 import tempfile
 import unittest
 from pathlib import Path
@@ -54,6 +55,24 @@ class AtomicWriteTests(unittest.TestCase):
         with self.assertRaises(FileNotFoundError):
             atomic_write_text(self.root / "absent" / "file", "合成数据")
         self.assertEqual(list(self.root.iterdir()), [])
+
+    @unittest.skipIf(os.name == "nt", "Windows 不使用 POSIX 权限位")
+    def test_existing_permissions_survive_replacement(self):
+        for mode in (0o644, 0o640, 0o600):
+            with self.subTest(mode=oct(mode)):
+                self.path.write_text("old", encoding="utf-8")
+                self.path.chmod(mode)
+                atomic_write_text(self.path, "new")
+                self.assertEqual(stat.S_IMODE(self.path.stat().st_mode), mode)
+
+    @unittest.skipIf(os.name == "nt", "Windows 不使用 POSIX umask")
+    def test_new_file_permissions_follow_umask(self):
+        original = os.umask(0o027)
+        try:
+            atomic_write_text(self.path, "new")
+            self.assertEqual(stat.S_IMODE(self.path.stat().st_mode), 0o640)
+        finally:
+            os.umask(original)
 
 
 if __name__ == "__main__":

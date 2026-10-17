@@ -14,6 +14,7 @@ import markdown
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from file_utils import atomic_write_text
+from config_utils import load_config
 
 SUG_START = "<!-- SUGGESTIONS:START -->"
 SUG_END = "<!-- SUGGESTIONS:END -->"
@@ -262,7 +263,7 @@ def render_page(root, d, a, md_text, nav, history_list):
         body = body[:start] + '<div class="suggest">' + body[start:m.end()] + "</div>" + body[m.end():]
     data = dict(a)
     phase_weekly = None
-    cfg = json.loads((root / "config.json").read_text(encoding="utf-8"))
+    cfg = load_config(root)
     for ph in cfg["phase_targets"]["phases"]:
         if ph["name"] == a["phase"]["name"]:
             phase_weekly = ph["weekly"]
@@ -278,11 +279,11 @@ def render_page(root, d, a, md_text, nav, history_list):
     return re.sub(r"__(TITLE|HANDLE|SUBTITLE|NAV|REPORT|HISTORY_LIST|DATA)__", lambda m: values[m[1]], TEMPLATE)
 
 
-def main():
+def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--root", required=True)
     ap.add_argument("--date")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
     root = Path(args.root)
     reports_dir = root / "reports"
     reports = sorted(p for p in reports_dir.iterdir() if p.is_dir() and (p / "analysis.json").is_file()) if reports_dir.exists() else []

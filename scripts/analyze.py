@@ -17,6 +17,7 @@ from pathlib import Path
 # run_weekly.sh 使用 -I，需显式加入本脚本目录才能导入共用工具。
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from file_utils import atomic_write_text
+from config_utils import load_config
 
 SUG_START = "<!-- SUGGESTIONS:START -->"
 SUG_END = "<!-- SUGGESTIONS:END -->"
@@ -390,15 +391,15 @@ def build_report(a):
     return "\n".join(L) + "\n"
 
 
-def main():
+def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--root", required=True)
     ap.add_argument("--date", default=date.today().isoformat())
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
     root = Path(args.root)
     d = date.fromisoformat(args.date)
     raw = root / "data" / "raw" / d.isoformat()
-    cfg = json.loads((root / "config.json").read_text(encoding="utf-8"))
+    cfg = load_config(root)
 
     meta = json.loads((raw / "meta.json").read_text(encoding="utf-8")) if (raw / "meta.json").exists() else {}
     if meta.get("ok") is False:

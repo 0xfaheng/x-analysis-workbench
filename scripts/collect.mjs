@@ -1,10 +1,10 @@
 // X 账号周报采集：在 ego-browser 中读取 Creator Studio 资格页并导出 Analytics CSV。
-// 由 run_weekly.sh 在前面注入 `const OUT_DIR = "...";` `const HANDLE = "...";` 后经 stdin 交给 `ego-browser nodejs`
+// 由 run_weekly.py 在前面注入 `const OUT_DIR = "...";` `const HANDLE = "...";` 后经 stdin 交给 `ego-browser nodejs`
 // （ego 的 Node 运行时拿不到外部环境变量）。只读，不发帖、不改设置；未登录时直接停止。
 
 const fs = await import("node:fs/promises");
 const path = await import("node:path");
-const meta = { started_at: new Date().toISOString(), handle: HANDLE, files: {}, warnings: [] };
+const meta = { started_at: new Date().toISOString(), handle: HANDLE, files: {}, warnings: [], backend: "ego" };
 const writeMeta = (extra = {}) =>
   fs.writeFile(path.join(OUT_DIR, "meta.json"), JSON.stringify({ ...meta, ...extra }, null, 2), "utf8");
 
