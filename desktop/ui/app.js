@@ -1,6 +1,6 @@
 'use strict';
 const $ = id => document.getElementById(id);
-let reports = [], selection = null, loaded = '', offset = 0, generation = -1, running = false, canAssist = false;
+let reports = [], selection = null, loaded = '', offset = 0, generation = -1, running = false;
 let refreshBusy = false, pollBusy = false;
 let currentHandle = '', settingsOpen = false, savingHandle = false;
 const api = () => window.pywebview.api;
@@ -8,7 +8,7 @@ const fmt = n => n == null ? '—' : (Math.abs(n) >= 10000 ? (n / 10000).toFixed
 function failure(error) { $('status').textContent = '操作失败：' + (error.message || error); $('status').classList.add('error'); }
 function controls() {
   document.querySelectorAll('[data-job]').forEach(b => {
-    b.disabled = running || !currentHandle || settingsOpen || (b.dataset.job === 'assistant' && !canAssist) || (b.dataset.job === 'render' && !selection);
+    b.disabled = running || !currentHandle || settingsOpen || (b.dataset.job === 'render' && !selection);
   });
   document.querySelectorAll('[data-path]').forEach(b => { b.disabled = running || (b.dataset.path === 'report' && !selection); });
   $('change-handle').disabled = running || savingHandle;
@@ -47,15 +47,14 @@ async function refresh(latest = false) {
   if (refreshBusy) return;
   refreshBusy = true;
   try {
-    const data = await api().list_reports(); reports = data.reports; canAssist = data.assistant;
+    const data = await api().list_reports(); reports = data.reports;
     currentHandle = data.handle;
     if (!currentHandle && !settingsOpen) editHandle();
     $('account').textContent = `${currentHandle ? '@' + currentHandle : '尚未设置用户名'} · v${data.version}`;
-    $('assistant-help').title = canAssist ? '让 mirasim 运行已配置的每周任务' : data.assistant_hint;
     if (latest || !reports.some(r => r.id === selection)) selection = reports[0]?.id ?? null;
     if (!reports.length) {
       $('empty').querySelector('h1').textContent = '还没有周报';
-      $('guide').textContent = `第一步：点「登录 X」在弹出的专用浏览器窗口登录 @${data.handle}；\n第二步：点「仅更新数据」。`;
+      $('guide').textContent = `第一步：确认已登录 @${data.handle}；\n第二步：点「更新数据与建议」，自动生成统计与下周建议。`;
     }
     paint();
   } catch (error) { failure(error); } finally { refreshBusy = false; }
@@ -80,7 +79,7 @@ async function saveHandle(event) {
     const result = await api().set_handle(value);
     currentHandle = result.handle; settingsOpen = false;
     await refresh();
-    $('status').textContent = `已保存 @${currentHandle}，请点击「登录 X」后「仅更新数据」。`;
+    $('status').textContent = `已保存 @${currentHandle}，请确认登录后点击「更新数据与建议」。`;
   } catch (error) { $('handle-error').textContent = '保存失败：' + (error.message || error); }
   finally { savingHandle = false; controls(); }
 }
@@ -105,7 +104,6 @@ window.XWBReport = url => api().open_url(url).catch(failure);
 window.addEventListener('pywebviewready', async () => {
   document.querySelectorAll('[data-job]').forEach(button => button.addEventListener('click', async () => {
     const kind = button.dataset.job;
-    if (kind === 'assistant' && !window.confirm('让 mirasim 采集数据、写建议并生成完整周报？通常需要 5–15 分钟。')) return;
     try {
       running = true; controls();
       const result = await api().start_job(kind, selection);

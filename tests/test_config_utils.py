@@ -36,11 +36,11 @@ class ConfigTests(WorkspaceTest):
                 load_config(self.root)
 
     def test_local_save_merges_nested_values_and_preserves_unknown_keys(self):
-        original = {"handle": "old", "assistant": {"context_file": "private-context.md"},
-                    "app": {"mirasim_port": 5000}, "custom": [1, 2]}
+        original = {"handle": "old", "notes": {"context_file": "private-context.md"},
+                    "preferences": {"enabled": True}, "custom": [1, 2]}
         self.write_json(self.root / "config.local.json", original)
-        saved = save_local_config(self.root, {"handle": "new", "app": {"mirasim_schedule_id": "id"}})
-        self.assertEqual(saved, {**original, "handle": "new", "app": {"mirasim_port": 5000, "mirasim_schedule_id": "id"}})
+        saved = save_local_config(self.root, {"handle": "new", "preferences": {"theme": "system"}})
+        self.assertEqual(saved, {**original, "handle": "new", "preferences": {"enabled": True, "theme": "system"}})
         self.assertEqual(json.loads((self.root / "config.local.json").read_text()), saved)
         self.assertEqual(load_config(self.root)["handle"], "new")
 

@@ -43,6 +43,7 @@ class MacPackagingTests(unittest.TestCase):
         datas = constructors["Analysis"].call_args.kwargs["datas"]
         sources = [str(path) for path, _ in datas]
         self.assertIn(str(ROOT / "docs/策略基线.template.md"), sources)
+        self.assertIn(str(ROOT / "rules"), sources)
         self.assertNotIn(str(ROOT / "docs/策略基线.md"), sources)
         self.assertFalse(any("config.local.json" in p or "开发记录" in p for p in sources))
         icon = (ROOT / "packaging/icon.icns").read_bytes()

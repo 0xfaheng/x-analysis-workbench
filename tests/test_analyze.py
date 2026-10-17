@@ -1,4 +1,5 @@
 import json
+import re
 import unittest
 from datetime import date, timedelta
 from unittest import mock
@@ -191,10 +192,13 @@ class AnalyzeIntegrationTests(WorkspaceTest):
         path = self.report_dir / "report.md"
         suggestion = "按原文保留 **中文建议**\n\n---\n\n路径 C:\\test 与 [链接](https://example.com)\n"
         original = path.read_text(encoding="utf-8")
-        original = original.replace(analyze.SUG_PLACEHOLDER, suggestion)
+        original = re.sub(re.escape(analyze.SUG_START) + r".*?" + re.escape(analyze.SUG_END),
+                          lambda _: analyze.SUG_START + "\n" + suggestion + analyze.SUG_END, original, flags=re.S)
         path.write_text(original, encoding="utf-8", newline="\n")
         self.run_analyze()
         self.assertEqual(path.read_text(encoding="utf-8"), original)
+        a = json.loads((self.report_dir / "analysis.json").read_text(encoding="utf-8"))
+        self.assertEqual(a["recommendations"]["origin"], "manual")
         history = json.loads((self.root / "data" / "history.json").read_text(encoding="utf-8"))
         self.assertEqual(len(history), 1)
 

@@ -42,7 +42,7 @@
   "categories": {
     "_note": "命中次数最多的类别胜出，平局按配置顺序；正则不区分大小写",
     "web3": "\\$[A-Za-z]{2,}|0x[0-9a-fA-F]{8,}|bc1[a-z0-9]{6,}|币安|链上|公链|撸|空投|牛市|熊市|meme|\\bca\\b|\\bbtc\\b|\\beth\\b|\\bsol(ana)?\\b|\\bbsc\\b|pump|alpha|交易所|行情|\\brgb\\b|\\bnft\\b|\\bath\\b|gas费|robinhood|代币|钱包|发射台|聪明钱|梭哈|抄底|web3",
-    "AI": "\\bAI\\b|ChatGPT|Claude|Codex|Grok|Gemini|GPT|大模型|模型|GEO|FDE|智能体|agent|LLM|Opus|Sonnet|DeepSeek|Kimi|MiniMax|豆包|元宝|自动化|编程|vibe|skill|prompt|提示词|工作流|插件|开源|开发|获客系统|公众号接口|workbuddy|openclaw|cursor|mirasim"
+    "AI": "\\bAI\\b|ChatGPT|Claude|Codex|Grok|Gemini|GPT|大模型|模型|GEO|FDE|智能体|agent|LLM|Opus|Sonnet|DeepSeek|Kimi|MiniMax|豆包|元宝|自动化|编程|vibe|skill|prompt|提示词|工作流|插件|开源|开发|获客系统|公众号接口|workbuddy|openclaw|cursor"
   },
   "risk_rules": {
     "contract_address": "0x[0-9a-fA-F]{20,}|\\b[1-9A-HJ-NP-Za-km-z]{32,44}\\b",
@@ -59,14 +59,8 @@
     "headless": false,
     "base_url": "https://x.com"
   },
-  "app": {
-    "_note": "桌面应用「生成完整周报」按钮通过 mirasim 立即运行这个定时任务",
-    "mirasim_schedule_id": null,
-    "mirasim_workspace": null,
-    "mirasim_port": 4970
-  },
   "_note": "这是按 AI/web3 中文创作者调的默认值，可在 config.local.json 覆盖。分类关键词、风险规则和阶段目标仅为示例。",
-  "assistant": {
-    "context_file": null
+  "recommendations": {
+    "min_sample_posts": 5
   }
 }

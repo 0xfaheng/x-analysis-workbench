@@ -46,7 +46,7 @@ def parse_args(argv=None):
     parser.add_argument("-h", "--help", action="help", help="显示帮助并退出")
     parser.add_argument("--date", type=report_date, default=date.today().isoformat(), help="报告日期 YYYY-MM-DD")
     parser.add_argument("--skip-collect", action="store_true", help="使用已有原始数据")
-    parser.add_argument("--backend", choices=("auto", "ego", "playwright"), help="覆盖 collector.backend")
+    parser.add_argument("--backend", choices=("auto", "ego", "playwright", "opencli"), help="覆盖 collector.backend")
     parser.add_argument("--login", action="store_true", help="仅打开 Playwright 专用浏览器，手动登录后退出")
     parser.add_argument("--root", type=Path,
                         default=Path(os.environ.get("XWB_ROOT") or Path(__file__).resolve().parents[1]),
@@ -65,8 +65,8 @@ def find_ego():
 
 
 def select_backend(requested):
-    if requested not in ("auto", "ego", "playwright"):
-        raise ValueError("collector.backend 必须是 auto、ego 或 playwright")
+    if requested not in ("auto", "ego", "playwright", "opencli"):
+        raise ValueError("collector.backend 必须是 auto、ego、playwright 或 opencli")
     if requested == "auto":
         return "ego" if platform.system() == "Darwin" and find_ego() else "playwright"
     return requested
@@ -129,7 +129,7 @@ def main(argv=None):
             raise ValueError("collector 必须是对象")
         backend = select_backend(args.backend or collector.get("backend", "auto"))
         handle = require_handle(config)
-        if args.login or (not args.skip_collect and backend == "playwright"):
+        if (args.login and backend != "opencli") or (not args.skip_collect and backend == "playwright"):
             from collect_playwright import browser_settings
             browser_settings(args.root, collector, args.login)
     except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
@@ -139,6 +139,9 @@ def main(argv=None):
     try:
         with RunLock(args.root / "data" / ".run.lock"):
             if args.login:
+                if backend == "opencli":
+                    from collect_opencli import login
+                    return login(args.root, handle, collector)
                 from collect_playwright import login
                 return login(args.root, handle, collector)
             try:
@@ -150,12 +153,15 @@ def main(argv=None):
             if not args.skip_collect:
                 if backend == "ego":
                     code = collect_ego(raw, handle)
+                elif backend == "opencli":
+                    from collect_opencli import collect
+                    code = collect(args.root, raw, handle, collector)
                 else:
                     from collect_playwright import collect
                     code = collect(args.root, raw, handle, collector)
                 if code:
                     if code == 3:
-                        where = "ego 浏览器" if backend == "ego" else "专用浏览器（先运行 --login）"
+                        where = {"ego": "ego 浏览器", "opencli": "日常 Chrome"}.get(backend, "专用浏览器（先运行 --login）")
                         print(f"X 未登录：请在{where}里登录 @{handle} 后重试", file=sys.stderr)
                     elif code == 4:
                         print(f"采集失败：请检查 {raw / 'meta.json'} 和浏览器运行状态", file=sys.stderr)

@@ -23,6 +23,9 @@ class PublicRepositoryTests(unittest.TestCase):
                 text = data.decode("utf-8-sig")
             except UnicodeDecodeError:
                 continue
+            # 用户明确指定的公开品牌头衔允许出现在首页；其他文件仍检查个人痕迹。
+            if path == ROOT / "README.md":
+                text = text.replace("上海封" + "阳科技创始人", "")
             for marker in forbidden:
                 if marker in text:
                     hits.append(f"{path.relative_to(ROOT)}: {marker}")
@@ -31,9 +34,7 @@ class PublicRepositoryTests(unittest.TestCase):
     def test_public_defaults_do_not_depend_on_owner_configuration(self):
         cfg = json.loads((ROOT / "config.json").read_text(encoding="utf-8"))
         self.assertEqual(cfg["handle"], "")
-        self.assertIsNone(cfg["app"]["mirasim_schedule_id"])
-        self.assertIsNone(cfg["app"]["mirasim_workspace"])
-        self.assertEqual(cfg["app"]["mirasim_port"], 4970)
-        self.assertIsNone(cfg["assistant"]["context_file"])
+        self.assertNotIn("app", cfg)
+        self.assertNotIn("assistant", cfg)
         self.assertEqual(cfg["collector"]["browser_channel"], "auto")
         self.assertIn("docs/策略基线.md", (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines())

@@ -93,7 +93,9 @@ class RenderTests(WorkspaceTest):
         parser = PageParser()
         parser.feed((self.report_dir / "report.html").read_text(encoding="utf-8"))
         links = [a for a in parser.anchors if a["attrs"].get("href", "").startswith("https://x.com/test_account/status/")]
-        self.assertEqual([a["text"] for a in links], texts)
+        # 最佳帖列表与新增选题备忘均可能引用同一帖，每次展示都必须保留原文转义。
+        self.assertEqual([a["text"] for a in links[:len(texts)]], texts)
+        self.assertTrue(all(a["text"] in texts for a in links))
         self.assertTrue(all(not a["children"] for a in links))
         self.assertNotIn("img", parser.tags)
 
@@ -122,8 +124,8 @@ class RenderTests(WorkspaceTest):
 
     def test_suggestions_with_rules_close_after_end_marker(self):
         a = self.run_analyze()
-        md = analyze.build_report(a).replace(analyze.SUG_PLACEHOLDER,
-            "第一段建议\n\n---\n\n第二段建议\n\n---\n\n最后一段建议")
+        a["recommendations"].update(origin="manual", markdown="第一段建议\n\n---\n\n第二段建议\n\n---\n\n最后一段建议")
+        md = analyze.build_report(a)
         page = render.render_page(self.root, REPORT_DATE, a, md, "", "")
         self.assertEqual(page.count('<div class="suggest">'), 1)
         block = page.split('<div class="suggest">', 1)[1].split("</div>", 1)[0]
@@ -143,7 +145,8 @@ class RenderTests(WorkspaceTest):
 
     def test_template_tokens_in_content_are_preserved(self):
         a = self.run_analyze()
-        md = analyze.build_report(a).replace(analyze.SUG_PLACEHOLDER, "保留 __DATA__ 与 __HISTORY_LIST__")
+        a["recommendations"].update(origin="manual", markdown="保留 __DATA__ 与 __HISTORY_LIST__")
+        md = analyze.build_report(a)
         # 用代码文字避免 Markdown 把下划线当成强调。
         md += "\n`__DATA__ __HISTORY_LIST__`\n"
         page = render.render_page(self.root, REPORT_DATE, a, md, "", "")

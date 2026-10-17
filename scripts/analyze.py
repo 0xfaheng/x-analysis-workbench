@@ -2,7 +2,7 @@
 """X 账号周报分析：读取 data/raw/<日期>/ 的采集结果，生成 reports/<日期>/analysis.json 与 report.md 草稿。
 
 统计窗口：报告日前 7 天（不含报告日当天，当天数据不完整）。
-report.md 中「下周调整建议」区块由助手填写；重复运行本脚本会保留已填写的建议。
+自动生成「下周调整建议」；重复运行会更新未编辑的程序建议，并保留人工修改。
 """
 import argparse
 import csv
@@ -18,6 +18,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from file_utils import atomic_write_text, ensure_utf8_stdio
 from config_utils import load_config, require_handle
+from recommendations import generate, is_untouched_automatic, load_policy, policy_markdown, previous_actions, wrap_automatic
 
 SUG_START = "<!-- SUGGESTIONS:START -->"
 SUG_END = "<!-- SUGGESTIONS:END -->"
@@ -179,7 +180,7 @@ def in_win(dstr, win):
     return win[0] <= d <= win[1]
 
 
-def post_stats(posts):
+def post_stats(posts, category_names=None):
     main = [p for p in posts if not p["reply"]]
     replies = [p for p in posts if p["reply"]]
     imps = sorted((p["impressions"] for p in main), reverse=True)
@@ -187,7 +188,7 @@ def post_stats(posts):
     total = sum(imps)
     eng = sum(p["engagements"] for p in main)
     by_cat = {}
-    for c in ["AI", "web3", "其他"]:
+    for c in dict.fromkeys([*(category_names or ["AI", "web3"]), "其他"]):
         xs = [p["impressions"] for p in main if p["category"] == c]
         by_cat[c] = {"posts": len(xs), "impressions": sum(xs),
                      "median": int(statistics.median(xs)) if xs else None}
@@ -212,7 +213,7 @@ def post_stats(posts):
         "link_posts": sum(1 for p in main if p["has_link"]),
         "one_liners": sum(1 for p in main if p["one_liner"]),
         "risk_posts": sum(1 for p in main if p["risks"]),
-        "ai_share": by_cat["AI"]["posts"] / n if n else None,
+        "ai_share": by_cat["AI"]["posts"] / n if n and "AI" in by_cat else None,
         "by_category": by_cat,
         "buckets": buckets,
     }
@@ -369,24 +370,28 @@ def build_report(a):
         for p in a["risk_posts"]:
             L.append(f"- {'、'.join(names.get(r, r) for r in p['risks'])} · {p['date']} · [{escape_markdown(short(p['text']))}]({p['link']})")
         L.append("")
-        L.append("以上为关键词规则命中，可能有误判，请人工判断是否删除或调整写法。")
+        L.append("以上仅为关键词线索，可能误判，不等于X违规认定；请先核对上下文，不据此自动删除或修改帖子。")
     else:
         L.append("- 本周主帖未命中风险规则。")
     L.append("")
     L.append("## 7. 上周建议回顾")
     L.append("")
     if a["prev_suggestions"]:
-        L.append(f"上次报告（{a['prev_suggestions']['date']}）的建议见该期报告；助手已在下方建议中评估执行情况。")
+        L.append(f"上次报告（{a['prev_suggestions']['date']}）的建议见该期报告；下方复查可观测指标，不能由指标证明建议已执行或造成变化。")
     else:
         L.append("这是第一期报告，暂无上周建议。")
     L.append("")
     L.append("## 8. 下周调整建议")
     L.append("")
     L.append(SUG_START)
-    L.append(SUG_PLACEHOLDER)
+    recommendation = a.get("recommendations")
+    L.append((wrap_automatic(recommendation["markdown"]) if recommendation.get("origin") == "program" else recommendation["markdown"])
+             if recommendation else SUG_PLACEHOLDER)
     L.append(SUG_END)
     L.append("")
     L.append("---")
+    if a.get("official_policy"):
+        L.extend(["", "## 9. X 官方规则依据", "", policy_markdown(a["official_policy"]), "", "---"])
     L.append(f"数据来源：X Creator Studio 与 Analytics 导出（采集于 {a['collected_at']}）。分类与风险标记为关键词规则，仅供参考。")
     return "\n".join(L) + "\n"
 
@@ -400,6 +405,7 @@ def main(argv=None):
     d = date.fromisoformat(args.date)
     raw = root / "data" / "raw" / d.isoformat()
     cfg = load_config(root)
+    policy = load_policy()
     try:
         require_handle(cfg)
     except ValueError as error:
@@ -424,7 +430,8 @@ def main(argv=None):
 
     wk_posts = [p for p in posts if in_win(p["date"], win)]
     pw_posts = [p for p in posts if in_win(p["date"], pwin)]
-    wk, pw = post_stats(wk_posts), post_stats(pw_posts)
+    category_names = [name for name in cfg["categories"] if not name.startswith("_")]
+    wk, pw = post_stats(wk_posts, category_names), post_stats(pw_posts, category_names)
     main_wk = sorted((p for p in wk_posts if not p["reply"]), key=lambda p: -p["impressions"])
 
     impr_ver_week = sum_daily(daily_ver, win)
@@ -445,8 +452,11 @@ def main(argv=None):
         "collected_at": meta.get("finished_at", "未知"),
         "window": [x.isoformat() for x in win],
         "prev_window": [x.isoformat() for x in pwin],
-        "target_90d": cfg["program"]["verified_home_impressions_90d_target"],
+        "target_90d": policy["thresholds"]["verified_home_impressions_90d"],
+        "configured_target_90d": cfg["program"]["verified_home_impressions_90d_target"],
+        "official_policy": policy,
         "phase": {"name": phase["name"], "until": phase["until"]},
+        "phase_weekly": phase["weekly"],
         "eligibility": elig,
         "eligibility_delta": delta(elig_val, prev_elig),
         "followers": followers,
@@ -469,12 +479,28 @@ def main(argv=None):
         "risk_posts": [p for p in main_wk if p["risks"]],
         "week_posts": main_wk,
         "prev_suggestions": previous_suggestions(root, d),
+        "data_quality": {
+            "missing_overview_days": [(win[0] + timedelta(days=i)).isoformat() for i in range(7)
+                                      if win[0] + timedelta(days=i) not in daily_all],
+            "missing_verified_days": [(win[0] + timedelta(days=i)).isoformat() for i in range(7)
+                                      if win[0] + timedelta(days=i) not in daily_ver],
+            "verified_overview_available": bool(daily_ver),
+        },
         "daily": [
             {"date": dd.isoformat(), "all": daily_all[dd].get("Impressions", 0),
              "verified": daily_ver.get(dd, {}).get("Impressions")}
             for dd in sorted(daily_all) if dd < d
         ],
     }
+
+    a["recommendations"] = generate(a, cfg, policy, previous_actions(root, d.isoformat()))
+    out = root / "reports" / d.isoformat()
+    md_path = out / "report.md"
+    if md_path.exists():
+        old = re.search(re.escape(SUG_START) + r"(.*?)" + re.escape(SUG_END), md_path.read_text(encoding="utf-8"), re.S)
+        if old and SUG_PLACEHOLDER not in old[1] and not is_untouched_automatic(old[1]):
+            a["recommendations"].update(origin="manual", markdown=old[1].strip("\n"),
+                                        summary="保留人工编辑的建议", actions=[], previous_review=[], topic_notes=[])
 
     entry = {
         "report_date": d.isoformat(),
@@ -497,16 +523,10 @@ def main(argv=None):
     atomic_write_text(hist_path, json.dumps(history, ensure_ascii=False, indent=2))
     a["history"] = history
 
-    out = root / "reports" / d.isoformat()
     out.mkdir(parents=True, exist_ok=True)
     atomic_write_text(out / "analysis.json", json.dumps(a, ensure_ascii=False, indent=2))
 
-    md_path = out / "report.md"
     new_md = build_report(a)
-    if md_path.exists():
-        m = re.search(re.escape(SUG_START) + r".*?" + re.escape(SUG_END), md_path.read_text(encoding="utf-8"), re.S)
-        if m and SUG_PLACEHOLDER not in m.group(0):
-            new_md = re.sub(re.escape(SUG_START) + r".*?" + re.escape(SUG_END), lambda _: m.group(0), new_md, flags=re.S)
     atomic_write_text(md_path, new_md)
     print(json.dumps({"report": str(md_path), "analysis": str(out / "analysis.json"),
                       "eligibility": elig_val, "main_posts": wk["main_posts"], "median": wk["median"],

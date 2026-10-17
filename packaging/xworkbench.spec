@@ -23,6 +23,7 @@ if sys.platform == "win32":
     )
 pw_data, pw_binaries, pw_imports = collect_all("playwright")
 datas = [(str(root / "desktop/ui"), "desktop/ui"), (str(root / "config.json"), ".")]
+datas.append((str(root / "rules"), "rules"))
 datas += [(str(p), "scripts") for p in (root / "scripts").iterdir() if p.suffix in (".py", ".mjs")]
 datas.append((str(root / "scripts/collect.mjs"), "."))
 # 开发记录不随安装包分发。

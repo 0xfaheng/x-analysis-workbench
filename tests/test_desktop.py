@@ -76,9 +76,8 @@ class DesktopPathTests(unittest.TestCase):
                          ["XWorkbench.exe", "--run-weekly", "--root", str(root), "--login"])
         self.assertEqual(core.job_command(root, "render", REPORT_DATE, is_frozen=False, executable="python", entry="desktop/app.py"),
                          ["python", "desktop/app.py", "--run-weekly", "--root", str(root), "--skip-collect", "--date", REPORT_DATE])
-        self.assertIn("--run-assistant", core.job_command(root, "assistant"))
         self.assertIn("--job-log", core.job_command(root, "collect", log_path="日志.log"))
-        for kind, day in (("shell", None), ("render", "../bad"), ("render", None)):
+        for kind, day in (("shell", None), ("assistant", None), ("render", "../bad"), ("render", None)):
             with self.assertRaises(ValueError):
                 core.job_command(root, kind, day)
         self.assertEqual(core.subprocess_options("win32"), {"creationflags": 0x08000000})
@@ -143,9 +142,19 @@ class DesktopPathTests(unittest.TestCase):
 
 
 class DesktopReportTests(WorkspaceTest):
+    def test_removed_external_job_cannot_start_a_process_or_mark_running(self):
+        api = desktop_app.API(self.root)
+        with mock.patch("app.subprocess.Popen") as start:
+            with self.assertRaisesRegex(ValueError, "未知任务"):
+                api.start_job("assistant")
+        start.assert_not_called()
+        self.assertFalse(api.job_status()["running"])
+        with contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(desktop_app.main(["--run-assistant"]), 2)
+
     def test_api_first_setup_normalizes_validates_and_preserves_other_keys(self):
         api = desktop_app.API(self.root)
-        original = {"handle": "", "app": {"mirasim_port": 5123}, "private": {"keep": [1, 2]}}
+        original = {"handle": "", "custom": {"enabled": True}, "private": {"keep": [1, 2]}}
         self.write_json(self.root / "config.local.json", original)
         self.assertEqual(api.list_reports()["handle"], "")
         with self.assertRaisesRegex(ValueError, "请先设置"):
@@ -180,8 +189,14 @@ class DesktopReportTests(WorkspaceTest):
         self.run_analyze()
         items = core.list_reports(self.root)
         self.assertEqual(items[0]["id"], REPORT_DATE)
-        self.assertTrue(items[0]["pending"])
+        self.assertFalse(items[0]["pending"])
         self.assertIsNone(items[0]["modified"])
+        # 兼容旧版占位报告；新报告的程序建议不再显示“待写建议”。
+        report_md = self.report_dir / "report.md"
+        complete = report_md.read_text(encoding="utf-8")
+        report_md.write_text("（待助手填写：旧版报告）", encoding="utf-8")
+        self.assertTrue(core.list_reports(self.root)[0]["pending"])
+        report_md.write_text(complete, encoding="utf-8")
         self.write_json(self.root / "data/history.json", [{"report_date": REPORT_DATE, "eligibility_verified_home_90d": 600000,
                                                         "targets_met": 3, "targets_total": 7}])
         new = self.root / "reports/2026-10-24"
@@ -239,31 +254,6 @@ class DesktopReportTests(WorkspaceTest):
         with mock.patch.dict(sys.modules, {"webview": None}), \
                 contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(desktop_app.main(["--run-weekly", "--root", str(self.root), "--date", REPORT_DATE, "--skip-collect"]), 0)
-
-    def test_mirasim_detection_and_schedule_recursion(self):
-        with mock.patch("core.shutil.which", return_value="C:/mirasim.exe") as which:
-            self.assertEqual(core.find_mirasim("win32"), "C:/mirasim.exe")
-            which.assert_called_once_with("mirasim.exe")
-        with mock.patch("core.find_mirasim", return_value="mirasim"):
-            self.assertIsNone(core.assistant_settings(self.root))
-            self.write_json(self.root / "config.local.json", {"app": {"mirasim_schedule_id": "test-id",
-                                                                    "mirasim_workspace": str(self.root), "mirasim_port": 4970}})
-            self.assertEqual(core.assistant_settings(self.root)[1], "test-id")
-        entry = {"id": "test-id", "cron": "test", "running": False}
-        self.assertEqual(core.find_schedule({"data": [[entry]]}, "test-id"), entry)
-        self.assertIsNone(core.find_schedule({"id": "test-id"}, "test-id"))
-
-    def test_assistant_waits_until_schedule_finishes(self):
-        entry = {"id": "test-id", "cron": "test"}
-        responses = [mock.Mock(returncode=0, stdout="{}", stderr=""),
-                     mock.Mock(returncode=0, stdout=json.dumps({**entry, "running": True}), stderr=""),
-                     mock.Mock(returncode=0, stdout=json.dumps({**entry, "running": False, "lastRun": {"ok": True}}), stderr="")]
-        with mock.patch("core.assistant_settings", return_value=("mirasim", "test-id", str(self.root), 4970)), \
-                mock.patch("core.subprocess.run", side_effect=responses) as run, \
-                mock.patch("core.time.sleep"), contextlib.redirect_stdout(io.StringIO()):
-            self.assertEqual(core.run_assistant(self.root), 0)
-        self.assertEqual(run.call_count, 3)
-        self.assertIn("run", run.call_args_list[0].args[0])
 
     @unittest.skipUnless(importlib.util.find_spec("webview"), "需要可选的 pywebview 依赖")
     def test_pywebview_import_does_not_create_window(self):

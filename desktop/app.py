@@ -69,8 +69,7 @@ class API:
     def list_reports(self):
         config = load_config(self.root)
         return {"reports": core.list_reports(self.root), "handle": config.get("handle", ""),
-                "version": __version__, "assistant": core.assistant_settings(self.root) is not None,
-                "assistant_hint": core.ASSISTANT_HINT}
+                "version": __version__}
 
     def job_status(self, offset=0):
         with self.lock:
@@ -89,9 +88,8 @@ class API:
         return {"ok": True, "handle": handle}
 
     def start_job(self, kind, day=None):
-        require_handle(load_config(self.root))
-        if kind == "assistant" and core.assistant_settings(self.root) is None:
-            raise ValueError(core.ASSISTANT_HINT)
+        config = load_config(self.root)
+        require_handle(config)
         if kind == "render" and day not in [r["id"] for r in core.list_reports(self.root)]:
             raise ValueError("请选择已有报告")
         command = core.job_command(self.root, kind, day)
@@ -101,10 +99,11 @@ class API:
             self.running, self.code, self.kind = True, None, kind
             self.generation += 1
             self.log = "$ " + subprocess.list2cmdline(command) + "\n"
-            self.status = {"login": "请在弹出的专用浏览器窗口手动登录 X，最多等待 15 分钟…",
+            login_hint = ("正在检查日常 Chrome 中的 X 登录账号…" if config.get("collector", {}).get("backend") == "opencli"
+                          else "请在弹出的专用浏览器窗口手动登录 X，最多等待 15 分钟…")
+            self.status = {"login": login_hint,
                            "collect": "正在读取 X 数据，大约 1–2 分钟…",
-                           "render": "正在使用已有数据重新生成网页…",
-                           "assistant": "助手正在生成完整周报，通常需要 5–15 分钟…"}[kind]
+                           "render": "正在使用已有数据重新生成网页…"}[kind]
         threading.Thread(target=self._run, args=(kind, day), daemon=True).start()
         return {"ok": True}
 
@@ -203,7 +202,7 @@ def main(argv=None):
     if len(argv) >= 2 and argv[0] == "--job-log":
         log_path, argv = argv[1], argv[2:]
     prepare_stdio(log_path)
-    if argv and argv[0] in ("--run-weekly", "--run-assistant"):
+    if argv and argv[0] == "--run-weekly":
         import run_weekly
         args = argv[1:]
         if "--root" not in args and not any(a.startswith("--root=") for a in args):
@@ -211,7 +210,7 @@ def main(argv=None):
         parsed = run_weekly.parse_args(args)
         try:
             core.initialize_root(parsed.root)
-            return core.run_assistant(parsed.root) if argv[0] == "--run-assistant" else run_weekly.main(args)
+            return run_weekly.main(args)
         except (OSError, ValueError) as error:
             print(f"初始化失败：{error}", file=sys.stderr)
             return 2

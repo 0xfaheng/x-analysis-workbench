@@ -4,20 +4,14 @@ import mimetypes
 import os
 import re
 import secrets
-import shutil
-import subprocess
 import sys
 import threading
-import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
-from config_utils import load_config
-
-ASSISTANT_HINT = "需要 mirasim，目前由 Mac 定时任务完成"
 EXIT_MESSAGES = {
-    0: "数据已更新。「下周调整建议」需要助手撰写，可点「生成完整周报」。",
+    0: "数据、统计与程序建议已更新；人工编辑的建议会保留。",
     2: "参数或配置错误：请检查 config.json，详情见运行日志。",
     3: "X 未登录：请登录 @{handle} 后重试。",
     4: "采集或分析失败：请检查浏览器运行状态，详情见运行日志。",
@@ -112,11 +106,9 @@ def select_report(items, selection=None, latest=False):
 
 def exit_message(code, handle="", kind="collect"):
     if code == 0 and kind == "login":
-        return f"已确认登录 @{handle}，现在可以点「仅更新数据」。"
+        return f"已确认登录 @{handle}，现在可以点「更新数据与建议」。"
     if code == 0 and kind == "render":
         return "报告网页已重新生成。"
-    if code == 0 and kind == "assistant":
-        return "助手已完成本周周报。"
     message = EXIT_MESSAGES.get(code, f"运行失败（退出码 {code}），详情见运行日志。")
     if code == 6 and sys.platform == "darwin":
         message = message.replace("Microsoft Edge 或 Google Chrome", "Google Chrome 或 Microsoft Edge")
@@ -124,7 +116,7 @@ def exit_message(code, handle="", kind="collect"):
 
 
 def job_command(root, kind, day=None, *, is_frozen=None, executable=None, entry=None, log_path=None):
-    if kind not in ("collect", "login", "render", "assistant"):
+    if kind not in ("collect", "login", "render"):
         raise ValueError("未知任务")
     is_frozen = frozen() if is_frozen is None else is_frozen
     command = [str(executable or sys.executable)]
@@ -132,7 +124,7 @@ def job_command(root, kind, day=None, *, is_frozen=None, executable=None, entry=
         command.append(str(entry or Path(__file__).with_name("app.py")))
     if log_path:
         command += ["--job-log", str(log_path)]
-    command += ["--run-assistant" if kind == "assistant" else "--run-weekly", "--root", str(root)]
+    command += ["--run-weekly", "--root", str(root)]
     if kind == "login":
         command.append("--login")
     if kind == "render":
@@ -144,84 +136,6 @@ def job_command(root, kind, day=None, *, is_frozen=None, executable=None, entry=
 
 def subprocess_options(system=None):
     return {"creationflags": 0x08000000} if (system or sys.platform) == "win32" else {}
-
-
-def find_mirasim(system=None):
-    name = "mirasim.exe" if (system or sys.platform) == "win32" else "mirasim"
-    found = shutil.which(name)
-    candidate = Path.home() / ".mirasim/bin" / name
-    return found or (str(candidate) if candidate.is_file() else None)
-
-
-def assistant_settings(root):
-    config = load_config(root)
-    app = config.get("app", {})
-    cli = find_mirasim()
-    if not isinstance(app, dict):
-        return None
-    schedule, workspace, port = (app.get(k) for k in ("mirasim_schedule_id", "mirasim_workspace", "mirasim_port"))
-    if not (cli and isinstance(schedule, str) and schedule.strip() and isinstance(workspace, str)
-            and workspace.strip() and Path(workspace).is_dir() and type(port) is int and 0 < port < 65536):
-        return None
-    return cli, schedule, workspace, port
-
-
-def find_schedule(value, ident):
-    if isinstance(value, dict):
-        if value.get("id") == ident and "cron" in value:
-            return value
-        children = value.values()
-    elif isinstance(value, list):
-        children = value
-    else:
-        return None
-    for child in children:
-        found = find_schedule(child, ident)
-        if found is not None:
-            return found
-    return None
-
-
-def run_assistant(root):
-    settings = assistant_settings(root)
-    if not settings:
-        print(ASSISTANT_HINT, flush=True)
-        return 2
-    cli, ident, workspace, port = settings
-
-    def capture(args):
-        result = subprocess.run([cli, "ui-cli", "--port", str(port), *args], cwd=root,
-                                capture_output=True, text=True, encoding="utf-8", errors="replace",
-                                timeout=60, **subprocess_options())
-        print(result.stdout + result.stderr, flush=True)
-        return result
-
-    try:
-        result = capture(["schedule", "run", "--cwd", workspace, "--id", ident])
-        if result.returncode:
-            if "no local access token" in result.stdout + result.stderr or "ECONNREFUSED" in result.stdout + result.stderr:
-                print("mirasim 没有在运行：请先打开 mirasim 再试。", flush=True)
-            return 4
-        print("助手正在生成本周周报，通常需要 5–15 分钟，完成后自动显示。", flush=True)
-        start, saw_running = time.monotonic(), False
-        while time.monotonic() - start < 45 * 60:
-            time.sleep(20)
-            try:
-                result = capture(["schedule"])
-                entry = find_schedule(json.loads(result.stdout), ident) if result.returncode == 0 else None
-            except (ValueError, subprocess.TimeoutExpired):
-                continue
-            if entry is None:
-                continue
-            if entry.get("running", False):
-                saw_running = True
-            elif saw_running or time.monotonic() - start > 90:
-                print("最近一次运行：\n" + json.dumps(entry.get("lastRun"), ensure_ascii=False, indent=2), flush=True)
-                return 0
-        print("等待超过 45 分钟，请到 mirasim 里查看这次周报会话。", flush=True)
-    except (OSError, subprocess.TimeoutExpired) as error:
-        print(f"调用助手失败：{error}", flush=True)
-    return 4
 
 
 def safe_static_path(url_path, root, ui):

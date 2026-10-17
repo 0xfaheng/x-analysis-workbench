@@ -1,11 +1,19 @@
 import shutil
 import subprocess
+import sys
 import unittest
 
 from support import ROOT
 
 
 class ScriptSyntaxTests(unittest.TestCase):
+    @unittest.skipUnless(sys.platform == "darwin" and shutil.which("swiftc"), "需要 Mac 和 Swift 检查原生入口")
+    def test_mac_native_entry_typechecks(self):
+        result = subprocess.run([shutil.which("swiftc"), "-swift-version", "5", "-parse-as-library",
+                                 "-typecheck", "-target", "arm64-apple-macos14.0", str(ROOT / "app/Sources/main.swift")],
+                                text=True, encoding="utf-8", capture_output=True, timeout=60)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     @unittest.skipUnless(shutil.which("node"), "需要 Node 做采集脚本语法检查")
     def test_collect_syntax_only(self):
         # 仅解析，绝不执行采集代码或调用 ego。

@@ -57,7 +57,7 @@ globalThis.document = { getElementById: id => nodes[id] ||= node(), querySelecto
 globalThis.window = { addEventListener(){}, pywebview: { api: { list_reports: async () => data } } };
 const first = {id: '2026-10-17', modified: 10, progress: .1, pending: true, url: 'reports/2026-10-17/report.html'};
 const second = {...first, id: '2026-10-24', url: 'reports/2026-10-24/report.html'};
-let data = {reports:[first], handle:'test_account', version:'2.0.0', assistant:false};
+let data = {reports:[first], handle:'test_account', version:'2.0.0'};
 '''
         assertions = r'''
 await refresh();
@@ -86,7 +86,7 @@ function node() { return { value:'', textContent:'', hidden:false, classList:{ad
   append(x){this.children.push(x)}, replaceChildren(){this.children=[]}, querySelector(){return node()} }; }
 globalThis.document = {getElementById:id => nodes[id] ||= node(),
   querySelectorAll:selector => selector === '[data-job]' ? jobs : [], createElement:node};
-let data = {reports:[], handle:'', version:'test', assistant:false}, saved = [], failSave = false;
+let data = {reports:[], handle:'', version:'test'}, saved = [], failSave = false;
 globalThis.window = { addEventListener(){}, pywebview:{api:{list_reports:async()=>data,
   set_handle:async value=>{if(failSave)throw new Error('模拟写入失败');saved.push(value);data.handle=value;return {ok:true,handle:value};}}}};
 '''

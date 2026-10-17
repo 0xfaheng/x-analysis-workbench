@@ -1,6 +1,6 @@
 // X 分析工作台：独立运行的 macOS 应用。
 // 左侧列出历次周报，右侧显示报告（应用内嵌渲染，不打开浏览器）；
-// 工具栏可「仅更新数据」（本机运行 scripts/run_weekly.sh）或「生成完整周报」（让 mirasim 立即运行每周定时任务，由助手写建议）。
+// 工具栏可更新数据、统计和程序建议。
 
 import AppKit
 import SwiftUI
@@ -23,8 +23,6 @@ enum Paths {
         return home.appendingPathComponent("Desktop/X分析工作台")
     }()
 
-    static var mirasim: String { home.appendingPathComponent(".mirasim/bin/mirasim").path }
-
     static var childPATH: String {
         [
             home.appendingPathComponent(".local/bin").path,
@@ -36,9 +34,6 @@ enum Paths {
 
 struct AppConfig {
     var handle = ""
-    var scheduleID: String?
-    var scheduleWorkspace: String?
-    var port = 4970
 
     static func load() -> AppConfig {
         var c = AppConfig()
@@ -47,11 +42,7 @@ struct AppConfig {
             guard let data = try? Data(contentsOf: url),
                   let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
             if let h = obj["handle"] as? String { c.handle = h }
-            if let app = obj["app"] as? [String: Any] {
-                if app.keys.contains("mirasim_schedule_id") { c.scheduleID = app["mirasim_schedule_id"] as? String }
-                if app.keys.contains("mirasim_workspace") { c.scheduleWorkspace = app["mirasim_workspace"] as? String }
-                if let p = app["mirasim_port"] as? Int { c.port = p }
-            }
+
         }
         return c
     }
@@ -132,26 +123,13 @@ enum Runner {
         }
     }
 
-    /// 运行并收集全部输出。
-    static func capture(_ executable: String, _ args: [String], cwd: URL) async -> (Int32, String) {
-        let box = OutputBox()
-        let code = await run(executable, args, cwd: cwd) { box.append($0) }
-        return (code, box.text)
-    }
-}
-
-final class OutputBox: @unchecked Sendable {
-    private let lock = NSLock()
-    private var buf = ""
-    func append(_ s: String) { lock.lock(); buf += s; lock.unlock() }
-    var text: String { lock.lock(); defer { lock.unlock() }; return buf }
 }
 
 // MARK: - 状态模型
 
 @MainActor
 final class Workbench: ObservableObject {
-    enum Job { case collect, assistant }
+    enum Job { case collect }
 
     @Published var reports: [ReportItem] = []
     @Published var selection: String?
@@ -160,7 +138,6 @@ final class Workbench: ObservableObject {
     @Published var statusIsError = false
     @Published var log = ""
     @Published var showLog = false
-    @Published var confirmAssistant = false
 
     let config = AppConfig.load()
     private var refreshTimer: Timer?
@@ -170,7 +147,7 @@ final class Workbench: ObservableObject {
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 20, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refresh(selectLatest: false) }
         }
-        if reports.isEmpty { status = "还没有周报，点击工具栏「仅更新数据」开始第一次采集" }
+        if reports.isEmpty { status = "还没有周报，点击工具栏「更新数据与建议」开始第一次采集" }
     }
 
     var selected: ReportItem? { reports.first { $0.id == selection } }
@@ -214,7 +191,7 @@ final class Workbench: ObservableObject {
         statusIsError = error
     }
 
-    // 仅更新数据：采集 + 分析 + 生成网页，不写建议。
+    // 采集 + 分析 + 程序建议 + 生成网页。
     func collect() {
         guard job == nil else { return }
         job = .collect
@@ -225,7 +202,7 @@ final class Workbench: ObservableObject {
                                         cwd: Paths.root) { s in Task { @MainActor in self.appendLog(s) } }
             switch code {
             case 0:
-                setStatus("数据已更新。「下周调整建议」需要助手撰写，可点「生成完整周报」。")
+                setStatus("数据、统计与程序建议已更新；人工编辑的建议会保留。")
             case 3:
                 setStatus("X 未登录：请登录 @\(config.handle) 后重试。", error: true)
                 showLog = true
@@ -251,75 +228,6 @@ final class Workbench: ObservableObject {
             job = nil
             refresh(selectLatest: code == 0)
         }
-    }
-
-    // 生成完整周报：让 mirasim 立即运行每周定时任务（采集、助手写建议、生成网页、发到对话）。
-    func runAssistant() {
-        guard job == nil else { return }
-        guard let id = config.scheduleID, let ws = config.scheduleWorkspace else {
-            setStatus("config.json 里没有配置 mirasim 定时任务，无法调用助手。", error: true)
-            return
-        }
-        job = .assistant
-        log = "$ mirasim ui-cli schedule run --id \(id)\n"
-        setStatus("正在把任务交给助手…")
-        let port = String(config.port)
-        Task {
-            let (code, out) = await Runner.capture(Paths.mirasim,
-                ["ui-cli", "--port", port, "schedule", "run", "--cwd", ws, "--id", id], cwd: Paths.root)
-            appendLog(out + "\n")
-            guard code == 0 else {
-                if out.contains("no local access token") || out.contains("ECONNREFUSED") {
-                    setStatus("mirasim 没有在运行：请先打开 mirasim 再试。", error: true)
-                } else {
-                    setStatus("调用助手失败，详情见运行日志。", error: true)
-                }
-                showLog = true
-                job = nil
-                return
-            }
-            setStatus("助手正在生成本周周报（采集、写建议、生成网页），通常需要 5–15 分钟，完成后自动显示。")
-            await waitForSchedule(id: id, port: port)
-            job = nil
-            refresh(selectLatest: true)
-        }
-    }
-
-    private func waitForSchedule(id: String, port: String) async {
-        let start = Date()
-        var sawRunning = false
-        while Date().timeIntervalSince(start) < 45 * 60 {
-            try? await Task.sleep(nanoseconds: 20_000_000_000)
-            refresh(selectLatest: false)
-            let (code, out) = await Runner.capture(Paths.mirasim, ["ui-cli", "--port", port, "schedule"], cwd: Paths.root)
-            guard code == 0, let entry = Self.findSchedule(id: id, in: out) else { continue }
-            let running = entry["running"] as? Bool ?? false
-            if running { sawRunning = true; continue }
-            if sawRunning || Date().timeIntervalSince(start) > 90 {
-                if let last = entry["lastRun"], let data = try? JSONSerialization.data(withJSONObject: last, options: [.prettyPrinted]) {
-                    appendLog("最近一次运行：\n" + String(decoding: data, as: UTF8.self) + "\n")
-                }
-                setStatus("助手已完成本周周报。")
-                return
-            }
-        }
-        setStatus("等待超过 45 分钟，请到 mirasim 里查看这次周报会话。", error: true)
-    }
-
-    private static func findSchedule(id: String, in json: String) -> [String: Any]? {
-        guard let obj = try? JSONSerialization.jsonObject(with: Data(json.utf8)) else { return nil }
-        var found: [String: Any]?
-        func walk(_ o: Any) {
-            if found != nil { return }
-            if let d = o as? [String: Any] {
-                if d["id"] as? String == id, d["cron"] != nil { found = d; return }
-                d.values.forEach(walk)
-            } else if let a = o as? [Any] {
-                a.forEach(walk)
-            }
-        }
-        walk(obj)
-        return found
     }
 
     func open(_ relative: String) {
@@ -449,16 +357,10 @@ struct ContentView: View {
         .navigationSubtitle("@\(wb.config.handle)")
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
-                Button { wb.confirmAssistant = true } label: {
-                    Label("生成完整周报", systemImage: "sparkles")
-                }
-                .help("让助手采集数据、撰写下周调整建议并生成报告")
-                .disabled(wb.job != nil)
-
                 Button { wb.collect() } label: {
-                    Label("仅更新数据", systemImage: "arrow.down.circle")
+                    Label("更新数据与建议", systemImage: "arrow.down.circle")
                 }
-                .help("只采集和统计 X 数据，不写建议（约 1–2 分钟）")
+                .help("采集 X 数据并自动生成统计、下周建议与网页报告")
                 .disabled(wb.job != nil)
 
                 Button { wb.showLog.toggle() } label: {
@@ -483,12 +385,7 @@ struct ContentView: View {
         .inspector(isPresented: $wb.showLog) {
             LogView().inspectorColumnWidth(min: 280, ideal: 380, max: 600)
         }
-        .confirmationDialog("生成本周完整周报？", isPresented: $wb.confirmAssistant) {
-            Button("开始生成") { wb.runAssistant() }
-            Button("取消", role: .cancel) {}
-        } message: {
-            Text("将由 mirasim 立即运行每周周报任务：采集 X 数据、助手撰写下周调整建议、生成报告并发到 mirasim 对话。需要 mirasim 和 ego lite 都在运行，通常 5–15 分钟。全程只读，不会发帖或修改账号。")
-        }
+
     }
 
     @ViewBuilder private var detail: some View {
@@ -496,10 +393,10 @@ struct ContentView: View {
             ReportWebView(url: r.htmlURL, version: r.htmlModified)
         } else if wb.reports.isEmpty {
             ContentUnavailableView("还没有周报", systemImage: "chart.bar.xaxis",
-                                   description: Text("点击工具栏「仅更新数据」开始第一次采集"))
+                                   description: Text("点击工具栏「更新数据与建议」开始第一次采集"))
         } else {
             ContentUnavailableView("这一期还没有生成报告页面", systemImage: "doc.text",
-                                   description: Text("点击「仅更新数据」或「生成完整周报」重新生成"))
+                                   description: Text("点击「更新数据与建议」重新生成"))
         }
     }
 

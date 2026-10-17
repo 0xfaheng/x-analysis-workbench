@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "version": "2026-10-17",
+  "verified_at": "2026-10-17",
+  "review_after_days": 30,
+  "program": "X Original Content Rewards",
+  "thresholds": {
+    "verified_home_impressions_90d": 500000,
+    "verified_followers": 500,
+    "window_days": 90
+  },
+  "sources": {
+    "original_rewards": {
+      "title": "X 原创内容奖励说明",
+      "url": "https://help.x.com/en/using-x/original-content-rewards"
+    },
+    "monetization": {
+      "title": "X 创作者变现标准",
+      "url": "https://help.x.com/en/rules-and-policies/content-monetization-standards"
+    },
+    "authenticity": {
+      "title": "X 真实性规则",
+      "url": "https://help.x.com/en/rules-and-policies/authenticity"
+    },
+    "automation": {
+      "title": "X 自动化规则",
+      "url": "https://help.x.com/en/rules-and-policies/x-automation"
+    }
+  },
+  "rules": [
+    {"id": "eligibility", "source": "original_rewards", "title": "申请资格", "summary": "近90天认证首页曝光至少50万（不含回复）、认证粉丝至少500，并满足年龄、订阅、地区等条件；达标仍须申请审核。"},
+    {"id": "qualified_impressions", "source": "original_rewards", "title": "合格曝光口径", "summary": "Premium用户的首页曝光且帖子至少50%可见；同账号同帖去重，排除推广、人工刷量和作弊曝光。"},
+    {"id": "originality", "source": "original_rewards", "title": "原创贡献", "summary": "应体现本人创作和实质观点；照搬、轻微修改和无实质贡献的汇编不算原创。"},
+    {"id": "reward_content", "source": "original_rewards", "title": "奖励内容限制", "summary": "自动创建或发布、误导信息、有效社区注释及专门教授变现等内容可能失去奖励资格；计划还禁止反复求互动。"},
+    {"id": "account_requirements", "source": "monetization", "title": "账号及收款条件", "summary": "通用条件还包括账号至少活跃3个月、资料完整、邮箱验证、双重验证、身份及收款验证和开放地区；不能由CSV代为确认。"},
+    {"id": "content_standards", "source": "monetization", "title": "内容标准", "summary": "违法、欺骗等内容不可变现，成人、暴力等内容可能受限；涉及武装冲突的AI生成内容须明确披露。"},
+    {"id": "authenticity", "source": "authenticity", "title": "真实互动", "summary": "禁止买量互刷、指标造假、垃圾信息及重复或近似重复刷屏；自然互动不等于每条内容都合格。"},
+    {"id": "automation", "source": "automation", "title": "自动化边界", "summary": "不得自动点赞或滥发未经请求的回复、私信；AI自动回复机器人另需X事先书面批准。一般自动化许可不代表奖励内容合格。"}
+  ]
+}
