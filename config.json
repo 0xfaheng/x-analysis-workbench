@@ -1,11 +1,11 @@
 {
-  "handle": "0xfaheng",
+  "handle": "",
   "program": {
     "verified_home_impressions_90d_target": 500000,
     "verified_followers_target": 500
   },
   "phase_targets": {
-    "_note": "阶段目标来自 2026-10-15 诊断；每月复盘时可调整，analyze.py 按 report_date 选取当前生效的阶段",
+    "_note": "这是按 AI/web3 中文创作者调的默认值，可在 config.local.json 覆盖；analyze.py 按 report_date 选取当前生效的阶段。",
     "phases": [
       {
         "name": "第 1 阶段：止跌换轨",
@@ -54,15 +54,19 @@
   "english_ratio_min": 0.6,
   "collector": {
     "backend": "auto",
-    "browser_channel": "msedge",
+    "browser_channel": "auto",
     "profile_dir": "browser-profile",
     "headless": false,
     "base_url": "https://x.com"
   },
   "app": {
     "_note": "桌面应用「生成完整周报」按钮通过 mirasim 立即运行这个定时任务",
-    "mirasim_schedule_id": "",
-    "mirasim_workspace": "",
+    "mirasim_schedule_id": null,
+    "mirasim_workspace": null,
     "mirasim_port": 4970
+  },
+  "_note": "这是按 AI/web3 中文创作者调的默认值，可在 config.local.json 覆盖。分类关键词、风险规则和阶段目标仅为示例。",
+  "assistant": {
+    "context_file": null
   }
 }

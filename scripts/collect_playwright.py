@@ -1,6 +1,7 @@
 """只读 Playwright 采集；仅在执行采集或手动登录时加载可选依赖。"""
 import json
 import os
+import platform
 import re
 import socket
 import sys
@@ -79,9 +80,9 @@ def write_meta(raw, meta, **extra):
 
 
 def browser_settings(root, config, login_mode=False):
-    channel = config.get("browser_channel", "msedge")
-    if channel not in ("msedge", "chrome", "", None):
-        raise ValueError("collector.browser_channel 只能是 msedge、chrome 或空字符串")
+    channel = config.get("browser_channel", "auto")
+    if channel not in ("auto", "msedge", "chrome", "", None):
+        raise ValueError("collector.browser_channel 只能是 auto、msedge、chrome 或空字符串")
     if not isinstance(config.get("headless", False), bool):
         raise ValueError("collector.headless 必须是 true 或 false")
     profile = Path(config.get("profile_dir") or "browser-profile").expanduser()
@@ -100,7 +101,7 @@ def load_playwright():
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
-        raise BrowserDependencyError("缺少 playwright，请运行 pip install -r requirements.txt；默认使用系统 Microsoft Edge，无需下载浏览器") from None
+        raise BrowserDependencyError("缺少 playwright，请运行 pip install -r requirements.txt；默认自动选择系统 Edge 或 Chrome") from None
     return sync_playwright
 
 
@@ -131,18 +132,45 @@ def check_profile_available(profile):
             kernel.CloseHandle(handle)
 
 
+def auto_channels(system=None):
+    system = system or platform.system()
+    if system == "Windows":
+        return ("msedge", "chrome")
+    if system == "Darwin":
+        return ("chrome", "msedge")
+    return ("chrome", "msedge", "")
+
+
+def browser_install_hint(system=None):
+    system = system or platform.system()
+    if system == "Windows":
+        return "请安装 Microsoft Edge 或 Google Chrome"
+    if system == "Darwin":
+        return "请安装 Google Chrome 或 Microsoft Edge"
+    return "请安装 Google Chrome 或 Microsoft Edge，或运行 python -m playwright install chromium"
+
+
 def launch_context(playwright, profile, options):
-    try:
-        return playwright.chromium.launch_persistent_context(str(profile), **options)
-    except Exception as error:
-        message = str(error)
-        if re.search(r"ProcessSingleton|profile.*in use|user data directory.*in use|SingletonLock", message, re.I):
-            raise ProfileOccupiedError(f"浏览器配置目录已被占用：{profile}，请关闭使用该目录的浏览器后重试") from error
-        if re.search(r"executable.*(doesn't exist|not found)|distribution.*not found|ENOENT|failed to find.*(chrome|edge)", message, re.I):
-            channel = options.get("channel")
-            hint = ("请安装 Microsoft Edge" if channel == "msedge" else "请安装 Google Chrome") if channel else "请运行 python -m playwright install chromium"
+    automatic = options.get("channel") == "auto"
+    channels = auto_channels() if automatic else (options.get("channel"),)
+    for channel in channels:
+        attempt = {k: v for k, v in options.items() if k != "channel"}
+        if channel:
+            attempt["channel"] = channel
+        try:
+            return playwright.chromium.launch_persistent_context(str(profile), **attempt)
+        except Exception as error:
+            message = str(error)
+            if re.search(r"ProcessSingleton|profile.*in use|user data directory.*in use|SingletonLock", message, re.I):
+                raise ProfileOccupiedError(f"浏览器配置目录已被占用：{profile}，请关闭使用该目录的浏览器后重试") from error
+            if not re.search(r"executable.*(doesn't exist|not found)|distribution.*not found|ENOENT|failed to find.*(chrome|edge)", message, re.I):
+                raise
+            if automatic and channel != channels[-1]:
+                continue
+            hint = browser_install_hint() if automatic else (
+                ("请安装 Microsoft Edge" if channel == "msedge" else "请安装 Google Chrome")
+                if channel else "请运行 python -m playwright install chromium")
             raise BrowserDependencyError(f"找不到浏览器：{hint}；也可在 config.local.json 设置 collector.browser_channel") from error
-        raise
 
 
 def save_download(download, target):

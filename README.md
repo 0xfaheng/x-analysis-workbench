@@ -1,143 +1,153 @@
 # X 分析工作台
 
-跨平台查看与分析 X 账号 @0xfaheng 的周报，跟踪「原创内容奖励」资格进度。程序只读 X，不发帖、不修改设置、不代填密码；下周建议由助手撰写。
+在自己的电脑上只读采集 X 数据，查看周报、内容表现与原创内容奖励资格进度。
 
-| 平台 | 日常入口 | 安装与运行 |
-|---|---|---|
-| macOS | 现有 Swift 原生 `X分析工作台.app` | 保持现有应用与 ego / mirasim 流程 |
-| Windows 10 / 11（64 位） | GitHub Releases 的安装包 | 下载 `XWorkbench-Setup-版本号.exe` → 安装 → 双击使用，无需 Python |
+## 功能
 
-Windows 用户请看 [Windows 安装与使用](docs/Windows安装与使用.md)。私有仓库先登录有访问权限的 GitHub 账号；安装包未签名，SmartScreen 提示时确认来源后点“更多信息 → 仍要运行”。也提供解压即用的便携版 ZIP。
+- 读取 Creator Studio 资格页和 Analytics 数据，保存原始 CSV 与页面快照。
+- 查看曝光走势、认证粉丝、主帖表现、分类、风险提示与阶段目标。
+- 桌面应用内查看历次周报、实时日志；补写建议后重新生成网页。
+- Windows / Mac 安装包无需 Python；首次填写自己的 X 用户名即可配置。
+- 可选连接本机 mirasim 定时任务，由助手撰写下周建议；默认数据更新不调用 AI 服务。
 
-## 日常使用：双击「X分析工作台.app」
+## 下载
 
-- 原生 Mac 应用，不打开浏览器。左侧是历次周报（门槛进度、目标达成数，「待写建议」表示这期还没有助手建议），右侧显示报告：指标卡、图表、完整周报。
-- 报告里的帖子链接会用系统默认方式打开原帖。
-- 工具栏：
-  - **生成完整周报**：让 mirasim 立即运行每周定时任务（采集 → 助手写下周建议 → 生成报告并发到 mirasim 对话），约 5–15 分钟，完成后应用自动显示。需要 mirasim 和 ego lite 都在运行。
-  - **仅更新数据**：只采集和统计，不写建议，约 1–2 分钟。
-  - **运行日志**、**更多**（打开文件夹、报告原文、策略基线、阶段目标配置）。
-- 应用每 20 秒自动检查新报告，所以每周一定时任务跑完后，打开应用就能看到新一期。
-- 如果应用被拷贝到别处，它会去桌面的 `X分析工作台` 文件夹找数据。
+从 [Releases 最新版](https://github.com/0xfaheng/x-analysis-workbench/releases/latest) 的 Assets 下载，勿选 Source code：
 
-## 数据从哪来
+| 平台 | 下载文件 |
+|---|---|
+| Windows 10 / 11，64 位 | `XWorkbench-Setup-版本号.exe`；便携版为 `XWorkbench-版本号-portable.zip` |
+| Mac，Apple Silicon（arm64），macOS 13.5+ | `XWorkbench-版本号-macOS-arm64.dmg`；备用为同名 `.zip`，不支持 Intel Mac |
 
-macOS 默认通过 **ego lite 浏览器里已登录的 X 账号** 在后台读取，所以 ego lite 要在运行并保持登录。Mac 应用本身不依赖浏览器显示。macOS 命令行需要 Python 3.10+ 和 `markdown`（`python3 -m pip install 'Markdown>=3.7,<4'`）；沿用 `./scripts/run_weekly.sh`，仍优先使用 `XWB_PYTHON` 指定且能导入 markdown 的解释器。
+详细步骤及常见问题：[Windows 安装与使用](docs/Windows安装与使用.md) · [Mac 安装与使用](docs/Mac安装与使用.md)。安装包未做平台认证签名，系统首次打开时可能提示拦截，处理方法见对应说明。
 
-Windows 通过 Python Playwright 驱动系统 Microsoft Edge，使用工作台独立配置目录，复用用户手动登录的账号。两个后端产出相同的原始文件，分析、渲染均在当前 Python 进程执行。程序只读，不输入账号密码、不发帖、不修改账号设置。
+## 快速开始
 
-## Windows 桌面版
+1. **安装**：Windows 双击安装包；Mac 打开 DMG，将 `XWorkbench.app` 拖入「应用程序」。
+2. **设置用户名**：首次启动在卡片中填自己的 X 用户名，可带或不带 `@`，限 1–15 位字母、数字或下划线。以后用「更多 → 修改 X 用户名」。
+3. **登录 X**：点击「登录 X」，在工作台专用浏览器中手动登录该账号，验证码和双重验证由本人完成。检测到账号后窗口关闭；最多等待 15 分钟。
+4. **仅更新数据**：点击后等待约 1–2 分钟，查看当天报告。需要访问 X 和账号 Analytics 的权限；登录其他账号不会被认作成功。
 
-首次点“登录 X”，在专用 Edge 窗口手动登录目标账号，再点“仅更新数据”。左侧列出历史周报、门槛进度、目标达成及待写建议；右侧应用内显示报告，外部链接交给默认浏览器。每 20 秒刷新时保留当前选择，运行日志实时显示子进程输出。“重新生成网页”使用选中期已有数据，适合补写建议后刷新。
+Windows 自动尝试 Edge → Chrome；Mac 的 Playwright 自动尝试 Chrome → Edge。macOS 更新数据时若发现已安装的 ego-browser，会优先使用 ego lite 的登录会话；此时需在 ego 中登录同一账号。「登录 X」按钮始终打开 Playwright 的独立配置窗口；详细区别见 Mac 使用说明。
 
-“生成完整周报”仅在检测到 mirasim CLI（Windows 为 mirasim.exe），且 `app.mirasim_schedule_id`、有效本机 `app.mirasim_workspace`、`app.mirasim_port` 齐全时启用；否则提示“需要 mirasim，目前由 Mac 定时任务完成”。可把 report.md 交给任意 AI 按 [周报流程](docs/周报流程.md) 第 3 步写建议，再重新生成网页。
+## 隐私与安全
 
-桌面数据目录优先级：`XWB_ROOT` → 冻结程序同级有 config.json 的便携目录 → 源码运行的仓库根目录 → `~/Documents/X分析工作台`。首次只复制缺失的默认 config 和用户文档，创建 data/reports；升级、卸载均保留用户数据，默认浏览器配置随 root 放在 browser-profile 中。
+全程只读 X：不发帖、不删帖、不修改账号设置、不代填密码。数据只保存在本机的 `文档/X分析工作台`（实际路径为用户主目录下 `Documents/X分析工作台`），工作台不上传任何数据至开发者或遥测服务器。默认不连接 AI 服务；自行启用 mirasim 后，助手按用户配置的流程处理报告。
 
-## 源码运行与命令行
+Playwright 登录态保存在工作台专用 `browser-profile/`，与日常浏览器配置分开。macOS 的可选 ego 后端沿用 ego lite 自己管理的会话。登录态、`config.local.json`、原始数据和报告均属于私人数据，请自行备份，不要提交到公开仓库。
 
-安装 Python 3.10 或更新版本，安装时勾选加入 PATH，并确认系统已安装 Microsoft Edge。在工作台根目录打开终端：
+安装版升级、卸载保留数据。高级用户可用 `XWB_ROOT` 指定数据根目录；Windows 便携版优先使用 exe 同级有 `config.json` 的目录；从源码运行默认使用仓库根目录。Mac 冻结版默认使用「文稿」目录。
 
-```powershell
-pip install -r requirements.txt
-python scripts\run_weekly.py --login
-python scripts\run_weekly.py
-```
+## 免责声明
 
-首次在弹出的专用浏览器里手动登录 `config.json` 中的账号。检测到目标 `@handle` 后自动关闭窗口；提前关闭且未确认登录时退出码为 3。以后复用 `browser-profile/` 中的登录态。`--login` 始终使用 Playwright 专用窗口，强制显示窗口，只处理登录，不采集或生成报告。
+本项目是非 X 官方工具，与 X Corp. 无关。X 页面、导出格式或奖励规则变化可能导致采集失效或指标含义改变；请以官方页面为准，并遵守 X 服务条款。分类、风险提示和阶段目标是规则示例，可能误判，不构成收益承诺。
 
-默认 `channel="msedge"`，不需要 `playwright install` 或额外下载浏览器。没有 Edge 时请先安装 Edge；也可在本机配置中选择已安装的 `chrome`。只有将 `browser_channel` 设为 `""` 使用 Playwright Chromium 时，才需另行运行 `python -m playwright install chromium`。
+## 从源码运行
 
-开发桌面界面可安装 `packaging/requirements-windows.txt`，运行 `python desktop/app.py`。冻结后任务入口为 `XWorkbench.exe --run-weekly <参数>`，源码为 `python desktop/app.py --run-weekly <参数>`，不初始化 WebView 窗口。
+需要 Python 3.10+、Node（仅开发测试需要）及已安装的 Edge 或 Chrome。Linux 的 Playwright 自动依次尝试 Chrome → Edge → Playwright 自带 Chromium，后者需自行安装。
 
-常用参数（Mac 的 `.sh` 入口也原样透传）：
-
-```powershell
-python scripts\run_weekly.py --skip-collect --date 2026-10-17
-python scripts\run_weekly.py --backend playwright --root "D:\X分析工作台"
-```
-
-`--backend auto|ego|playwright` 覆盖配置；`auto` 在 macOS 找得到 ego-browser 时选 ego，其余情况选 Playwright。ego 的查找顺序为 PATH、`~/.local/bin/ego-browser`。根目录优先级为显式 `--root`、环境变量 `XWB_ROOT`、入口脚本上级目录。`--login` 不能与 `--skip-collect` 同时使用。
-
-## 本机配置与退出码
-
-`config.json` 保存公共规则。可在根目录新增 `config.local.json`，按字典递归合并覆盖；数组、标量整体替换，未覆盖的字段保留。例如：
+在仓库根目录执行，先创建只保存本机设置的 `config.local.json`：
 
 ```json
 {
-  "collector": {
-    "backend": "auto",
-    "browser_channel": "msedge",
-    "profile_dir": "browser-profile",
-    "headless": false,
-    "base_url": "https://x.com"
-  }
+  "handle": "your_handle"
 }
 ```
 
-`profile_dir` 可用相对根目录的路径或绝对路径，勿指向日常个人浏览器配置。默认显示窗口但不主动置顶；可设 `headless: true`，X 可能对无头模式降级。`base_url` 支持本地模拟站点及路径前缀。以上浏览器选项只用于 Playwright，ego 后端沿用现有行为。`config.local.json` 和默认 `browser-profile/` 不入 git；自定义配置目录请放到仓库外。Swift 应用仍从原有 `app.mirasim_*` 字段读取定时任务配置，不依赖 Windows 上存在该 Mac 目录。
+macOS / Linux：
 
-入口在 `<root>/data/.run.lock` 记录 PID 与开始时间，登录模式也持锁；进程不存在或超过 2 小时自动回收记录。`.run.lock.guard` 是用于安全回收的常驻小文件，不表示任务仍运行。Playwright 另外检查专用配置目录的占用；占用时请关闭该目录的浏览器再重试。CSV 被 Excel 占用时会保留旧文件并提示关闭 Excel。
-
-| 退出码 | 含义 |
-|---|---|
-| 0 | 成功（登录模式已确认目标账号） |
-| 2 | 参数或配置错误 |
-| 3 | X 未登录目标账号；或登录窗口关闭但未确认登录；或登录超过 15 分钟 |
-| 4 | 采集失败、浏览器连接/页面异常，或分析渲染输入/文件错误 |
-| 5 | 缺少 markdown 依赖（Mac 包装找不到可用 Python 也返回 5） |
-| 6 | 缺少 Playwright，或找不到配置指定的 Edge/Chrome/Chromium |
-| 7 | 已有采集/分析或登录任务在运行 |
-
-## 开发者：测试与 Windows 构建
-
-```powershell
-python -m unittest discover -s tests
-./packaging/build_windows.ps1
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python scripts/run_weekly.py --login
+.venv/bin/python scripts/run_weekly.py
+# macOS 可用薄包装；macOS auto 优先 ego
+XWB_PYTHON=.venv/bin/python ./scripts/run_weekly.sh
 ```
 
-构建脚本安装依赖、跑测试、PyInstaller onedir/windowed 构建、合成夹具冻结包冒烟、Inno Setup 安装包、便携 ZIP；输出 `dist/XWorkbench-Setup-版本号.exe` 与 `dist/XWorkbench-版本号-portable.zip`。不打包浏览器，Playwright 的 Node 驱动随包。找不到 Inno Setup 6 时用 Chocolatey 安装。
+Windows PowerShell：
 
-普通离线测试不启动浏览器。仅明确设置 `XWB_BROWSER_TESTS=1` 时，`tests/test_collect_mock.py` 启动 headless 浏览器访问本地模拟站点；`XWB_BROWSER_CHANNEL` 默认为 msedge。CI 的 Windows 任务必须开启，Ubuntu 默认跳过。测试使用临时合成数据，覆盖资格图标、认证开关、CSV 下载、28D 受众和未登录退出码 3；不登录真实 X。
+```powershell
+python -m venv .venv
+.venv\Scripts\python -m pip install -r requirements.txt
+.venv\Scripts\python scripts\run_weekly.py --login
+.venv\Scripts\python scripts\run_weekly.py
+```
 
-## 开发者：发布新版本
+运行源码桌面版：macOS 安装 `packaging/requirements-macos.txt`，Windows 安装 `packaging/requirements-windows.txt`，再运行 `python desktop/app.py`。Linux 命令行可用；桌面 WebView 运行库需自行配置，不提供 Linux 安装包。
 
-1. 修改唯一版本来源 `scripts/version.py`，并在 `CHANGELOG.md` 添加对应版本段落。
-2. 本地测试后提交修改，再执行 `git tag vX.Y.Z && git push --tags`（此前需已配置 GitHub 远程并推送代码）。
-3. Actions 在 Windows 上测试、构建并上传安装包与便携 ZIP，再从 CHANGELOG 提取该版本说明创建 Release。标签与版本不一致会直接失败。
-4. 手动运行 release 工作流只生成 artifact，不创建 Release。首发需检查 Actions、下载附件，并在真实 Windows 上完成首次登录及安装/升级/卸载验收。私有仓库的 Release 同样仅对有权限的账号开放。
+```bash
+python scripts/run_weekly.py --skip-collect --date 2026-10-17 --root .
+python scripts/run_weekly.py --backend playwright --root .
+python scripts/render.py --root .
+```
 
-## 其他
+`config.json` 是公共默认值，`config.local.json` 按字典递归覆盖，数组及标量整体替换。默认分类、风险规则、阶段目标按 AI/web3 中文创作者设置，可自行调整。首次初始化从通用模板生成 `docs/策略基线.md`，已有个人策略不覆盖；助手流程见 [周报流程](docs/周报流程.md)。
 
-- 策略和规则：`docs/策略基线.md`；每周执行步骤：`docs/周报流程.md`。
-- 命令行手动运行：`./scripts/run_weekly.sh`（采集 + 分析 + 生成网页）→ 在 `reports/<日期>/report.md` 写建议 → `python3 scripts/render.py --root .`
-- 配置：`config.json` 与可选 `config.local.json`（分类关键词、风险规则、阶段目标、采集器、mirasim 定时任务 ID）。
-- 修改应用后重新编译：`app/build.sh`（源码 `app/Sources/main.swift`）。
-- 离线测试：`/Library/Frameworks/Python.framework/Versions/3.13/bin/python3 -m unittest discover -s tests`（使用临时合成数据，不采集、不改真实报告；网页渲染需安装 `markdown`）。Node 与 zsh 可用时还会检查脚本语法，Node 也用于执行网页脚本的 DOM 替身测试。
-- `index.html` 是同一份报告的网页版，没有应用时也可以用浏览器打开。
+```json
+{
+  "handle": "your_handle",
+  "collector": {
+    "backend": "auto",
+    "browser_channel": "auto",
+    "profile_dir": "browser-profile",
+    "headless": false,
+    "base_url": "https://x.com"
+  },
+  "assistant": { "context_file": null }
+}
+```
 
-## 目录
+`--backend auto|ego|playwright` 可覆盖配置。`browser_channel` 可显式选 `msedge`、`chrome` 或 `""`；空字符串使用 Playwright Chromium，需要 `python -m playwright install chromium`。不要把 `profile_dir` 指向日常个人浏览器配置。`--login` 不能和 `--skip-collect` 同用。
 
-| 路径 | 内容 |
+| 退出码 | 处理 |
 |---|---|
-| `X分析工作台.app` | 桌面应用 |
-| `app/` | 应用源码、图标和编译脚本 |
-| `desktop/` | Python 桌面入口、可测试的任务/文件服务、中文 UI |
-| `packaging/` | 图标、PyInstaller spec、Inno Setup、Windows 构建与发布说明提取 |
-| `.github/workflows/` | 双平台测试、Windows 出包与标签发布 |
-| `scripts/version.py`、`CHANGELOG.md` | 共用版本号与中文更新记录 |
-| `tests/` | 合成夹具、离线单测及显式开启的模拟采集集成测试 |
-| `docs/` | 面向用户的 Windows 说明、策略和流程 |
-| `docs/开发记录/` | 不随安装包分发的开发与验证记录 |
-| `scripts/collect.mjs` | ego-browser 采集脚本（只读） |
-| `scripts/collect_playwright.py` | Playwright + 系统 Edge 采集后端（只读） |
-| `scripts/run_weekly.py` | 跨平台采集 + 同进程分析和网页生成入口 |
-| `scripts/run_weekly.sh` | Mac Python 选择与兼容包装 |
-| `scripts/config_utils.py`、`scripts/run_lock.py` | 配置合并与跨进程运行锁 |
-| `requirements.txt` | Python 依赖范围（Mac ego 路线只需 markdown） |
-| `scripts/analyze.py` | 统计、目标检查、风险标记，生成报告草稿 |
-| `scripts/render.py` | 生成单期报告页和 `index.html` |
-| `data/raw/<日期>/` | 每期原始 CSV 与页面快照 |
-| `data/history.json` | 历次周报关键指标 |
-| `reports/<日期>/` | 每期 `report.md`、`report.html`、`analysis.json` |
-| `browser-profile/` | Playwright 专用登录态，不入 git |
+| 0 | 成功 |
+| 2 | 设置用户名或修正参数 / 配置 |
+| 3 | 登录正确的 X 账号后重试 |
+| 4 | 查看运行日志及 `data/raw/日期/meta.json`；CSV 被 Excel 占用时先关闭 Excel |
+| 5 | 安装 markdown 依赖，或重新安装工作台 |
+| 6 | 安装 Edge / Chrome；源码运行时检查 Playwright 依赖 |
+| 7 | 等待已有任务结束；进程已退出或锁记录超过 2 小时后自动回收 |
+
+## 进阶：Mac 原生应用与 mirasim 自动周报
+
+`app/` 保留 Swift 原生应用源码，支持 macOS 14+ 的 Apple Silicon。它与 Python 桌面版共用分析脚本和报告格式，可继续与已有工作台目录放在一起，或用 `XWB_ROOT` 指向原数据目录。原生应用默认回退到桌面同名工作台目录；Python 安装版默认数据在「文稿」，两种入口需指向同一 root 才会共享报告。
+
+原生应用的 `AppConfig.load` 依次读取 `config.json` 和 `config.local.json`，支持 handle 与 app 字段覆盖。自行编译用 `app/build.sh`；不要在使用现有应用时无意覆盖它。
+
+安装并运行 mirasim 和 ego lite，在 mirasim 中创建每周任务，按 [周报流程](docs/周报流程.md) 采集、写建议、渲染。把本机任务的 `app.mirasim_schedule_id`、`app.mirasim_workspace`、`app.mirasim_port` 写入 `config.local.json`（端口默认 4970）。Python 桌面版检测到 CLI 和完整配置后启用「生成完整周报」，按任务运行状态轮询。项目背景文件可通过 `assistant.context_file` 指定，按流程只读取可公开讲的经历。
+
+未配置 mirasim 时，可把 `report.md` 交给自己选择的助手，按周报流程填入 `SUGGESTIONS:START/END` 标记之间，再点「重新生成网页」。本工具不自动发布帖子。
+
+## 开发与发布流程
+
+```bash
+python -m unittest discover -s tests
+# macOS Apple Silicon
+bash packaging/build_macos.sh python3
+```
+
+Windows 使用 `./packaging/build_windows.ps1`。两份构建脚本都安装依赖、跑测试、PyInstaller 冻结并以临时合成数据冒烟。Mac 再做 ad-hoc 签名，生成 DMG（含「应用程序」快捷方式）和 ZIP；Windows 生成 Inno Setup 安装包和便携 ZIP。不捆绑浏览器，不打包个人数据或个人策略。
+
+普通测试不启动浏览器。显式设置 `XWB_BROWSER_TESTS=1` 才运行 headless 本地模拟站点集成测试，绝不访问真实 X；`XWB_BROWSER_CHANNEL` 可指定浏览器。CI 在 Ubuntu、Windows、macOS 测试；Windows 用 Edge、macOS 用 Chrome 开启浏览器测试。GUI、首次登录、平台安全拦截和真实 X 改版兼容仍需真机验收。
+
+发布时更新唯一版本来源 `scripts/version.py` 和 `CHANGELOG.md`，测试后由维护者提交、打 `vX.Y.Z` 标签并推送。release 工作流分别构建 Windows / Mac，各上传 artifact；两者成功后 Ubuntu publish job 一次创建 Release 并附上四个文件。标签必须等于源码版本。手动触发只构建、不发布。本地构建或修改工作流不会自动将 GitHub 仓库设为公开。
+
+## 目录结构
+
+| 路径 | 用途 |
+|---|---|
+| `config.json` / `config.local.json` | 公共默认值 / 忽略入库的本机覆盖 |
+| `desktop/` | Python 桌面入口、js_api、UI 与只读报告服务 |
+| `app/` | 可选 Swift 原生应用 |
+| `scripts/` | 采集、分析、渲染、配置、锁和共享版本 |
+| `packaging/` | 图标、PyInstaller、Mac / Windows 构建与安装脚本 |
+| `.github/workflows/` | 三平台 CI、双平台出包与标签发布 |
+| `tests/` | 合成夹具、离线测试、显式开启的模拟采集测试 |
+| `docs/` | 安装说明、策略模板、助手流程和开发记录 |
+| `docs/策略基线.md` | 首次初始化生成的个人策略，不入库、不随包分发 |
+| `data/raw/日期/` | 个人原始数据，不入库 |
+| `data/history.json` | 历次指标，不入库 |
+| `reports/日期/`、`index.html` | 个人报告，不入库 |
+| `browser-profile/` | Playwright 专用登录态，不入库 |

@@ -13,7 +13,7 @@ from pathlib import Path
 
 # -I 不包含脚本目录；同时让 PyInstaller 能发现下面的静态模块导入。
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from config_utils import load_config
+from config_utils import load_config, require_handle
 from file_utils import atomic_write_text, ensure_utf8_stdio
 from run_lock import LockBusyError, RunLock
 
@@ -128,9 +128,7 @@ def main(argv=None):
         if not isinstance(collector, dict):
             raise ValueError("collector 必须是对象")
         backend = select_backend(args.backend or collector.get("backend", "auto"))
-        handle = config["handle"]
-        if not isinstance(handle, str) or not re.fullmatch(r"[A-Za-z0-9_]{1,15}", handle):
-            raise ValueError("handle 必须是不含 @ 的 X 用户名")
+        handle = require_handle(config)
         if args.login or (not args.skip_collect and backend == "playwright"):
             from collect_playwright import browser_settings
             browser_settings(args.root, collector, args.login)

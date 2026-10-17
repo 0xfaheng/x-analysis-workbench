@@ -51,6 +51,48 @@ class CollectorPureTests(unittest.TestCase):
             with self.subTest(message=message), self.assertRaises(expected):
                 cp.launch_context(playwright, Path("中文配置"), {"channel": "msedge"})
 
+    def test_auto_browser_order_and_fallback_only_on_missing_executable(self):
+        for system, channels in (("Windows", ["msedge", "chrome"]),
+                                 ("Darwin", ["chrome", "msedge"]),
+                                 ("Linux", ["chrome", "msedge", None])):
+            for success_at in range(len(channels)):
+                playwright = mock.Mock()
+                context = object()
+                launch = playwright.chromium.launch_persistent_context
+                launch.side_effect = [RuntimeError("Executable doesn't exist")] * success_at + [context]
+                with mock.patch("collect_playwright.platform.system", return_value=system):
+                    self.assertIs(cp.launch_context(playwright, Path("profile"), {"channel": "auto", "headless": True}), context)
+                self.assertEqual([call.kwargs.get("channel") for call in launch.call_args_list], channels[:success_at + 1])
+                self.assertTrue(all(call.kwargs["headless"] for call in launch.call_args_list))
+        for message, expected in (("ProcessSingleton: in use", cp.ProfileOccupiedError),
+                                   ("browser disconnected", RuntimeError)):
+            playwright = mock.Mock()
+            playwright.chromium.launch_persistent_context.side_effect = RuntimeError(message)
+            with self.assertRaises(expected):
+                cp.launch_context(playwright, Path("profile"), {"channel": "auto"})
+            self.assertEqual(playwright.chromium.launch_persistent_context.call_count, 1)
+
+    def test_all_auto_browsers_missing_has_platform_install_hint(self):
+        for system, hint, count in (("Windows", "请安装 Microsoft Edge 或 Google Chrome", 2),
+                                    ("Darwin", "请安装 Google Chrome 或 Microsoft Edge", 2),
+                                    ("Linux", "playwright install chromium", 3)):
+            playwright = mock.Mock()
+            playwright.chromium.launch_persistent_context.side_effect = RuntimeError("Executable doesn't exist")
+            with mock.patch("collect_playwright.platform.system", return_value=system), \
+                    self.assertRaisesRegex(cp.BrowserDependencyError, hint):
+                cp.launch_context(playwright, Path("profile"), {"channel": "auto"})
+            self.assertEqual(playwright.chromium.launch_persistent_context.call_count, count)
+
+    def test_explicit_browser_never_falls_back(self):
+        for channel in ("chrome", "msedge", "", None):
+            playwright = mock.Mock()
+            launch = playwright.chromium.launch_persistent_context
+            launch.side_effect = RuntimeError("Executable doesn't exist")
+            with self.assertRaises(cp.BrowserDependencyError):
+                cp.launch_context(playwright, Path("profile"), {"channel": channel})
+            self.assertEqual(launch.call_count, 1)
+            self.assertEqual(launch.call_args.kwargs.get("channel"), channel or None)
+
     def test_range_and_verified_selector_use_native_api(self):
         page, meta = mock.Mock(), cp.new_meta("test_account")
         cp.select_range(page, "3M")
@@ -72,7 +114,7 @@ class CollectorFileTests(WorkspaceTest):
     def test_settings_defaults_override_and_login_is_always_visible(self):
         profile, options = cp.browser_settings(self.root, {})
         self.assertEqual(profile, (self.root / "browser-profile").resolve())
-        self.assertEqual(options["channel"], "msedge")
+        self.assertEqual(options["channel"], "auto")
         self.assertFalse(options["headless"])
         profile, options = cp.browser_settings(self.root, {
             "profile_dir": "中文配置", "headless": True, "browser_channel": ""}, True)
@@ -113,6 +155,15 @@ class CollectorFileTests(WorkspaceTest):
         self.assertEqual(meta["step"], "启动浏览器")
         self.assertIn("playwright", meta["error"])
         self.assertFalse(meta["ok"])
+
+    def test_all_browsers_missing_returns_six_for_collection_and_login(self):
+        factory = mock.MagicMock()
+        factory.return_value.__enter__.return_value.chromium.launch_persistent_context.side_effect = RuntimeError("Executable doesn't exist")
+        with mock.patch("collect_playwright.load_playwright", return_value=factory), \
+                contextlib.redirect_stderr(io.StringIO()) as err, contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(cp.collect(self.root, self.raw, "test_account", {}), 6)
+            self.assertEqual(cp.login(self.root, "test_account", {}), 6)
+        self.assertIn(cp.browser_install_hint(), err.getvalue())
 
     def test_collect_error_records_current_step_and_success_protocol(self):
         def fail_pages(page, raw, handle, config, meta, set_step):

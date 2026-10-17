@@ -1,5 +1,15 @@
 # 更新记录
 
+## [2.1.0] - 2026-10-17
+
+- 面向公众的默认配置，首次启动填写 X 用户名并原子合并保存本机设置，支持随时修改；未配置时显示中文提示。
+- 个人策略改为忽略入库，只分发通用模板，首次初始化生成个人副本；清理公开文档中的机器路径与个人背景。
+- Swift 配置补齐 config.local.json 覆盖，保留已有 Mac 原生入口与 mirasim / ego 流程。
+- 浏览器自动选择：Windows Edge → Chrome，Mac Chrome → Edge，Linux 再尝试 Playwright Chromium；Mac auto 仍优先 ego。
+- 新增 Apple Silicon Mac .app、ad-hoc 签名、DMG / ZIP 构建脚本与冻结包无界面冒烟。
+- CI 覆盖 Ubuntu / Windows / macOS，Windows 和 Mac 开启本地模拟浏览器测试；双平台独立出包后一次发布四个附件，手动触发仅构建。
+- 重写公开首页，新增 Mac 安装与安全拦截说明，同步 Windows 首次设置流程与个人痕迹扫描测试。
+
 ## [2.0.0] - 2026-10-17
 
 - 跨平台 Python 统一任务入口，支持配置分层、独立浏览器登录态、跨进程运行锁和中文退出码。

@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""onedir + windowed；只带 Playwright 驱动，浏览器使用系统 Edge。"""
+"""Windows onedir / macOS arm64 BUNDLE；只带驱动，浏览器由用户安装。"""
 import sys
 from pathlib import Path
 from PyInstaller.utils.hooks import collect_all, collect_submodules
@@ -26,7 +26,7 @@ datas = [(str(root / "desktop/ui"), "desktop/ui"), (str(root / "config.json"), "
 datas += [(str(p), "scripts") for p in (root / "scripts").iterdir() if p.suffix in (".py", ".mjs")]
 datas.append((str(root / "scripts/collect.mjs"), "."))
 # 开发记录不随安装包分发。
-datas += [(str(p), "docs") for p in (root / "docs").glob("*.md")]
+datas += [(str(p), "docs") for p in (root / "docs").glob("*.md") if p.name != "策略基线.md"]
 datas += pw_data
 
 a = Analysis(
@@ -43,5 +43,18 @@ exe = EXE(
     bootloader_ignore_signals=False, strip=False, upx=False, console=False,
     icon=str(root / "packaging/icon.ico") if sys.platform == "win32" else None,
     version=version_info,
+    target_arch="arm64" if sys.platform == "darwin" else None,
 )
 coll = COLLECT(exe, a.binaries, a.datas, strip=False, upx=False, name="XWorkbench")
+if sys.platform == "darwin":
+    app = BUNDLE(
+        coll, name="XWorkbench.app", icon=str(root / "packaging/icon.icns"),
+        bundle_identifier="io.github.0xfaheng.xworkbench", version=__version__,
+        info_plist={
+            "CFBundleName": "X分析工作台", "CFBundleDisplayName": "X分析工作台",
+            "CFBundleShortVersionString": __version__, "CFBundleVersion": __version__,
+            "LSMinimumSystemVersion": "13.5", "NSHighResolutionCapable": True,
+            "NSDocumentsFolderUsageDescription": "在文稿文件夹中保存本机 X 分析数据与周报。",
+            "LSApplicationCategoryType": "public.app-category.productivity",
+        },
+    )

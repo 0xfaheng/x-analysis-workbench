@@ -1,4 +1,4 @@
-﻿; 编译：ISCC.exe /DAppVersion=2.0.0 packaging\installer.iss
+﻿; 编译：ISCC.exe /DAppVersion=2.1.0 packaging\installer.iss
 #ifndef AppVersion
   #error AppVersion must be supplied with /DAppVersion
 #endif

@@ -2,14 +2,18 @@
 const $ = id => document.getElementById(id);
 let reports = [], selection = null, loaded = '', offset = 0, generation = -1, running = false, canAssist = false;
 let refreshBusy = false, pollBusy = false;
+let currentHandle = '', settingsOpen = false, savingHandle = false;
 const api = () => window.pywebview.api;
 const fmt = n => n == null ? '—' : (Math.abs(n) >= 10000 ? (n / 10000).toFixed(1).replace(/\.0$/, '') + ' 万' : n.toLocaleString('zh-CN'));
 function failure(error) { $('status').textContent = '操作失败：' + (error.message || error); $('status').classList.add('error'); }
 function controls() {
   document.querySelectorAll('[data-job]').forEach(b => {
-    b.disabled = running || (b.dataset.job === 'assistant' && !canAssist) || (b.dataset.job === 'render' && !selection);
+    b.disabled = running || !currentHandle || settingsOpen || (b.dataset.job === 'assistant' && !canAssist) || (b.dataset.job === 'render' && !selection);
   });
   document.querySelectorAll('[data-path]').forEach(b => { b.disabled = running || (b.dataset.path === 'report' && !selection); });
+  $('change-handle').disabled = running || savingHandle;
+  $('save-handle').disabled = running || savingHandle;
+  $('cancel-handle').disabled = savingHandle;
 }
 function choose(id) { selection = id; paint(); }
 function paint() {
@@ -28,7 +32,8 @@ function paint() {
   $('count').textContent = `共 ${reports.length} 期 · 每 20 秒刷新`;
   const selected = reports.find(r => r.id === selection);
   const key = selected?.modified == null ? '' : selected.id + ':' + selected.modified;
-  $('report').hidden = !key; $('empty').hidden = !!key;
+  $('setup').hidden = !settingsOpen;
+  $('report').hidden = settingsOpen || !key; $('empty').hidden = settingsOpen || !!key;
   if (key && key !== loaded) $('report').src = '../' + selected.url + '?v=' + selected.modified;
   if (!key && loaded) $('report').src = 'about:blank';
   loaded = key;
@@ -43,15 +48,41 @@ async function refresh(latest = false) {
   refreshBusy = true;
   try {
     const data = await api().list_reports(); reports = data.reports; canAssist = data.assistant;
-    $('account').textContent = `@${data.handle} · v${data.version}`;
+    currentHandle = data.handle;
+    if (!currentHandle && !settingsOpen) editHandle();
+    $('account').textContent = `${currentHandle ? '@' + currentHandle : '尚未设置用户名'} · v${data.version}`;
     $('assistant-help').title = canAssist ? '让 mirasim 运行已配置的每周任务' : data.assistant_hint;
     if (latest || !reports.some(r => r.id === selection)) selection = reports[0]?.id ?? null;
     if (!reports.length) {
       $('empty').querySelector('h1').textContent = '还没有周报';
-      $('guide').textContent = `第一步：点「登录 X」在弹出的 Edge 窗口登录 @${data.handle}；\n第二步：点「仅更新数据」。`;
+      $('guide').textContent = `第一步：点「登录 X」在弹出的专用浏览器窗口登录 @${data.handle}；\n第二步：点「仅更新数据」。`;
     }
     paint();
   } catch (error) { failure(error); } finally { refreshBusy = false; }
+}
+function editHandle() {
+  settingsOpen = true;
+  $('more').open = false;
+  $('handle').value = currentHandle;
+  $('handle-error').textContent = '';
+  $('cancel-handle').hidden = !currentHandle;
+  paint(); $('handle').focus();
+}
+async function saveHandle(event) {
+  event.preventDefault();
+  const value = $('handle').value.trim().replace(/^@/, '');
+  if (!/^[A-Za-z0-9_]{1,15}$/.test(value)) {
+    $('handle-error').textContent = '请输入 1–15 位字母、数字或下划线，可在开头带 @。';
+    return;
+  }
+  savingHandle = true; controls();
+  try {
+    const result = await api().set_handle(value);
+    currentHandle = result.handle; settingsOpen = false;
+    await refresh();
+    $('status').textContent = `已保存 @${currentHandle}，请点击「登录 X」后「仅更新数据」。`;
+  } catch (error) { $('handle-error').textContent = '保存失败：' + (error.message || error); }
+  finally { savingHandle = false; controls(); }
 }
 async function poll() {
   if (pollBusy) return;
@@ -86,6 +117,9 @@ window.addEventListener('pywebviewready', async () => {
     $('more').open = false; api().open_path(button.dataset.path, selection).catch(failure);
   }));
   $('toggle-log').addEventListener('click', () => showLog($('logs').hidden));
+  $('change-handle').addEventListener('click', editHandle);
+  $('handle-form').addEventListener('submit', saveHandle);
+  $('cancel-handle').addEventListener('click', () => { settingsOpen = false; paint(); });
   await refresh(); await poll();
   setInterval(() => refresh(), 20000); setInterval(poll, 500);
 });

@@ -15,7 +15,7 @@ BASE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BASE / "scripts"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import core
-from config_utils import load_config
+from config_utils import load_config, require_handle, save_local_config
 from version import __version__
 
 
@@ -79,7 +79,17 @@ class API:
                     "log": self.log[offset:], "offset": len(self.log), "generation": self.generation,
                     "kind": self.kind}
 
+    def set_handle(self, value):
+        handle = value.strip().removeprefix("@") if isinstance(value, str) else value
+        handle = require_handle({"handle": handle})
+        with self.lock:
+            if self.running:
+                raise ValueError("请等待任务结束后再修改 X 用户名")
+            save_local_config(self.root, {"handle": handle})
+        return {"ok": True, "handle": handle}
+
     def start_job(self, kind, day=None):
+        require_handle(load_config(self.root))
         if kind == "assistant" and core.assistant_settings(self.root) is None:
             raise ValueError(core.ASSISTANT_HINT)
         if kind == "render" and day not in [r["id"] for r in core.list_reports(self.root)]:
@@ -91,7 +101,7 @@ class API:
             self.running, self.code, self.kind = True, None, kind
             self.generation += 1
             self.log = "$ " + subprocess.list2cmdline(command) + "\n"
-            self.status = {"login": "请在弹出的 Edge 窗口手动登录 X，最多等待 15 分钟…",
+            self.status = {"login": "请在弹出的专用浏览器窗口手动登录 X，最多等待 15 分钟…",
                            "collect": "正在读取 X 数据，大约 1–2 分钟…",
                            "render": "正在使用已有数据重新生成网页…",
                            "assistant": "助手正在生成完整周报，通常需要 5–15 分钟…"}[kind]

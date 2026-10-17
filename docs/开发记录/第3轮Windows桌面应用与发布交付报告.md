@@ -64,10 +64,10 @@
 
 | 检查 | 实际结果 |
 |---|---|
-| `/tmp/xwb-venv/bin/python -m unittest discover -s tests` | 109 项，成功，跳过 2 项；约 2.2 秒 |
-| `/Library/Frameworks/Python.framework/Versions/3.13/bin/python3 -m unittest discover -s tests` | 109 项，成功，跳过 3 项；约 2.1 秒 |
-| Swift 类型检查 | `swiftc -typecheck -swift-version 5 -parse-as-library -target arm64-apple-macos14.0 -module-cache-path /tmp/xwb-swift-cache app/Sources/main.swift -framework SwiftUI -framework WebKit -framework AppKit` 退出码 0；没有执行 app/build.sh，没有覆盖 .app |
-| Mac PyInstaller | `/tmp/xwb-venv/bin/python -m PyInstaller --noconfirm --clean packaging/xworkbench.spec` 成功；使用 `PYINSTALLER_CONFIG_DIR=/tmp/xwb-pyinstaller-config`，arm64 onedir/windowed 产物在 dist/XWorkbench，约 157 MiB |
+| `<构建虚拟环境>/bin/python -m unittest discover -s tests` | 109 项，成功，跳过 2 项；约 2.2 秒 |
+| `python3 -m unittest discover -s tests` | 109 项，成功，跳过 3 项；约 2.1 秒 |
+| Swift 类型检查 | `swiftc -typecheck -swift-version 5 -parse-as-library -target arm64-apple-macos14.0 -module-cache-path <临时目录>/xwb-swift-cache app/Sources/main.swift -framework SwiftUI -framework WebKit -framework AppKit` 退出码 0；没有执行 app/build.sh，没有覆盖 .app |
+| Mac PyInstaller | `<构建虚拟环境>/bin/python -m PyInstaller --noconfirm --clean packaging/xworkbench.spec` 成功；使用 `PYINSTALLER_CONFIG_DIR=<临时目录>/xwb-pyinstaller-config`，arm64 onedir/windowed 产物在 dist/XWorkbench，约 157 MiB |
 | 冻结包普通输出冒烟 | 合成中文/带空格临时 root；`dist/XWorkbench/XWorkbench --run-weekly --skip-collect --root <dir> --date 2026-10-17` 返回 0，生成 report.html / index.html |
 | 冻结包显式日志冒烟 | 同一入口加 `--job-log <日志路径>`，返回 0，日志含 report_html，未创建窗口 |
 | 分析/渲染回归 | 冻结包两种模式下，history.json、analysis.json、report.md、report.html、index.html 共 5 项，SHA-256 与修改前合成基线相同 |
@@ -79,7 +79,7 @@
 
 跳过原因必须区分：两个解释器都未设置 XWB_BROWSER_TESTS，因此浏览器集成测试跳过；当前执行沙箱禁止监听任何本地端口（bind 返回 PermissionError / Operation not permitted），真实 HTTP 连接测试也跳过，但处理器的 200/404、防穿越、报告注入及不改磁盘的逻辑通过无端口测试。第二个解释器还缺少 pywebview，按预期跳过该依赖的导入检查。CI Windows 开启 XWB_BROWSER_TESTS 时，端口不允许或浏览器/依赖缺失会失败，不会借本机跳过逻辑掩盖错误。
 
-本机 PyInstaller 日志暂存在 `/tmp/xwb-round3-pyinstaller.log`；基线指纹仅为临时验证证据，不包含真实数据正文。正常构建结果留在忽略的 build/ 与 dist/。
+本机 PyInstaller 日志暂存在 `<临时目录>/xwb-round3-pyinstaller.log`；基线指纹仅为临时验证证据，不包含真实数据正文。正常构建结果留在忽略的 build/ 与 dist/。
 
 ## 仍须 CI / 真实 Windows 验证
 

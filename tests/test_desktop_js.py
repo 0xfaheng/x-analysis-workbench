@@ -51,7 +51,7 @@ assert.equal(opened.length, 3);
 import assert from 'node:assert/strict';
 const nodes = {};
 function node() { return { textContent: '', hidden: false, children: [], classList: {add(){}, toggle(){}},
-  setAttribute(){}, addEventListener(){}, append(x){this.children.push(x)}, replaceChildren(){this.children=[]},
+  setAttribute(){}, addEventListener(){}, focus(){}, append(x){this.children.push(x)}, replaceChildren(){this.children=[]},
   querySelector(){return node()} }; }
 globalThis.document = { getElementById: id => nodes[id] ||= node(), querySelectorAll: () => [], createElement: node };
 globalThis.window = { addEventListener(){}, pywebview: { api: { list_reports: async () => data } } };
@@ -72,5 +72,51 @@ assert(nodes.report.src.endsWith('?v=20'));
 await refresh(true);
 assert.equal(selection, second.id);
 assert(nodes.report.src.includes(second.url));
+'''
+        self.run_js(harness + script + assertions)
+
+
+    def test_first_setup_edit_cancel_validation_save_and_failure(self):
+        script = (ROOT / "desktop/ui/app.js").read_text(encoding="utf-8")
+        harness = r'''
+import assert from 'node:assert/strict';
+const nodes = {}, jobs = [{dataset:{job:'login'}}, {dataset:{job:'collect'}}];
+function node() { return { value:'', textContent:'', hidden:false, classList:{add(){},toggle(){}},
+  children:[], setAttribute(){}, addEventListener(){}, focus(){this.focused=true},
+  append(x){this.children.push(x)}, replaceChildren(){this.children=[]}, querySelector(){return node()} }; }
+globalThis.document = {getElementById:id => nodes[id] ||= node(),
+  querySelectorAll:selector => selector === '[data-job]' ? jobs : [], createElement:node};
+let data = {reports:[], handle:'', version:'test', assistant:false}, saved = [], failSave = false;
+globalThis.window = { addEventListener(){}, pywebview:{api:{list_reports:async()=>data,
+  set_handle:async value=>{if(failSave)throw new Error('模拟写入失败');saved.push(value);data.handle=value;return {ok:true,handle:value};}}}};
+'''
+        assertions = r'''
+await refresh();
+assert(settingsOpen && !nodes.setup.hidden && nodes.empty.hidden && nodes.report.hidden);
+assert(nodes['cancel-handle'].hidden && nodes.handle.focused);
+assert(jobs.every(x=>x.disabled));
+nodes.handle.value='@@bad';
+await saveHandle({preventDefault(){}});
+assert.equal(saved.length,0);
+assert(nodes['handle-error'].textContent.includes('1–15'));
+nodes.handle.value='@First_123';
+await saveHandle({preventDefault(){}});
+assert.deepEqual(saved,['First_123']);
+assert(!settingsOpen && nodes.setup.hidden && !nodes.empty.hidden);
+assert(jobs.every(x=>!x.disabled));
+editHandle();
+assert.equal(nodes.handle.value,'First_123');
+assert(!nodes['cancel-handle'].hidden);
+nodes.handle.value='unsaved';
+await refresh();
+assert.equal(nodes.handle.value,'unsaved');
+failSave=true;
+await saveHandle({preventDefault(){}});
+assert(settingsOpen && nodes['handle-error'].textContent.includes('模拟写入失败'));
+assert(!nodes['save-handle'].disabled);
+settingsOpen=false;paint();
+assert(nodes.setup.hidden);
+running=true;controls();
+assert(nodes['change-handle'].disabled && jobs.every(x=>x.disabled));
 '''
         self.run_js(harness + script + assertions)

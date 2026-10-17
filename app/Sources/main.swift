@@ -35,21 +35,23 @@ enum Paths {
 }
 
 struct AppConfig {
-    var handle = "0xfaheng"
+    var handle = ""
     var scheduleID: String?
     var scheduleWorkspace: String?
     var port = 4970
 
     static func load() -> AppConfig {
         var c = AppConfig()
-        let url = Paths.root.appendingPathComponent("config.json")
-        guard let data = try? Data(contentsOf: url),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return c }
-        if let h = obj["handle"] as? String { c.handle = h }
-        if let app = obj["app"] as? [String: Any] {
-            c.scheduleID = app["mirasim_schedule_id"] as? String
-            c.scheduleWorkspace = app["mirasim_workspace"] as? String
-            if let p = app["mirasim_port"] as? Int { c.port = p }
+        for name in ["config.json", "config.local.json"] {
+            let url = Paths.root.appendingPathComponent(name)
+            guard let data = try? Data(contentsOf: url),
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
+            if let h = obj["handle"] as? String { c.handle = h }
+            if let app = obj["app"] as? [String: Any] {
+                if app.keys.contains("mirasim_schedule_id") { c.scheduleID = app["mirasim_schedule_id"] as? String }
+                if app.keys.contains("mirasim_workspace") { c.scheduleWorkspace = app["mirasim_workspace"] as? String }
+                if let p = app["mirasim_port"] as? Int { c.port = p }
+            }
         }
         return c
     }
@@ -237,7 +239,7 @@ final class Workbench: ObservableObject {
                 setStatus("缺少 markdown 依赖：请安装依赖或重新安装工作台，详情见运行日志。", error: true)
                 showLog = true
             case 6:
-                setStatus("缺少浏览器依赖：请安装 Microsoft Edge；仍失败时重新安装工作台，详情见运行日志。", error: true)
+                setStatus("缺少浏览器依赖：请安装 Google Chrome 或 Microsoft Edge；仍失败时重新安装工作台，详情见运行日志。", error: true)
                 showLog = true
             case 7:
                 setStatus("已有任务在运行：请等待采集、分析或登录任务结束后重试。", error: true)

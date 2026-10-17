@@ -49,6 +49,7 @@ class DesktopPathTests(unittest.TestCase):
         self.assertTrue((target / "data").is_dir())
         self.assertTrue((target / "reports").is_dir())
         self.assertTrue((target / "docs/周报流程.md").is_file())
+        self.assertEqual((target / "docs/策略基线.md").read_bytes(), (ROOT / "docs/策略基线.template.md").read_bytes())
         self.assertFalse((target / "docs/开发记录").exists())
         (target / "config.json").write_text("用户设置", encoding="utf-8")
         (target / "docs/周报流程.md").write_text("用户文档", encoding="utf-8")
@@ -57,6 +58,9 @@ class DesktopPathTests(unittest.TestCase):
         self.assertEqual((target / "config.json").read_text(encoding="utf-8"), "用户设置")
         self.assertEqual((target / "docs/周报流程.md").read_text(encoding="utf-8"), "用户文档")
         self.assertTrue((target / "docs/策略基线.md").is_file())
+        (target / "docs/策略基线.md").write_text("个人策略原样保留", encoding="utf-8")
+        core.initialize_root(target, ROOT)
+        self.assertEqual((target / "docs/策略基线.md").read_text(encoding="utf-8"), "个人策略原样保留")
 
     def test_source_initialization_keeps_config_and_docs_bytes(self):
         target = self.base / "source"
@@ -82,9 +86,13 @@ class DesktopPathTests(unittest.TestCase):
 
     def test_all_exit_messages_match_swift(self):
         swift = (ROOT / "app/Sources/main.swift").read_text(encoding="utf-8")
-        for code in (2, 3, 4, 5, 6, 7):
+        for code in (2, 3, 4, 5, 7):
             message = core.EXIT_MESSAGES[code].replace("{handle}", r"\(config.handle)")
             self.assertIn(message, swift)
+        with mock.patch("core.sys.platform", "darwin"):
+            self.assertIn(core.exit_message(6), swift)
+        with mock.patch("core.sys.platform", "win32"):
+            self.assertIn("请安装 Microsoft Edge 或 Google Chrome", core.exit_message(6))
         self.assertIn("登录", core.exit_message(0, "test_account", "login"))
         self.assertIn("重新生成", core.exit_message(0, kind="render"))
         self.assertIn("退出码 99", core.exit_message(99))
@@ -135,6 +143,38 @@ class DesktopPathTests(unittest.TestCase):
 
 
 class DesktopReportTests(WorkspaceTest):
+    def test_api_first_setup_normalizes_validates_and_preserves_other_keys(self):
+        api = desktop_app.API(self.root)
+        original = {"handle": "", "app": {"mirasim_port": 5123}, "private": {"keep": [1, 2]}}
+        self.write_json(self.root / "config.local.json", original)
+        self.assertEqual(api.list_reports()["handle"], "")
+        with self.assertRaisesRegex(ValueError, "请先设置"):
+            api.start_job("login")
+        for text, normalized in ((" @New_123 ", "New_123"), ("a", "a"), ("a" * 15, "a" * 15)):
+            self.assertEqual(api.set_handle(text), {"ok": True, "handle": normalized})
+            self.assertEqual(api.list_reports()["handle"], normalized)
+            self.assertEqual(json.loads((self.root / "config.local.json").read_text()), {**original, "handle": normalized})
+        before = (self.root / "config.local.json").read_bytes()
+        for text in ("", "@@test", "中文", "test-name", "a" * 16, None):
+            with self.assertRaises(ValueError):
+                api.set_handle(text)
+        api.running = True
+        with self.assertRaisesRegex(ValueError, "任务结束"):
+            api.set_handle("other")
+        self.assertEqual((self.root / "config.local.json").read_bytes(), before)
+
+    def test_strategy_action_opens_personal_file(self):
+        core.initialize_root(self.root)
+        api = desktop_app.API(self.root)
+        if sys.platform == "win32":
+            with mock.patch("app.os.startfile") as opened:
+                api.open_path("strategy")
+                opened.assert_called_once_with(str(self.root / "docs/策略基线.md"))
+        else:
+            with mock.patch("app.subprocess.Popen") as opened:
+                api.open_path("strategy")
+                self.assertEqual(opened.call_args.args[0][-1], str(self.root / "docs/策略基线.md"))
+
     def test_history_fields_pending_mark_and_selection(self):
         self.assertEqual(core.list_reports(self.root), [])
         self.run_analyze()

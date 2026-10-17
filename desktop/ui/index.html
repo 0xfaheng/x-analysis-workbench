@@ -20,7 +20,8 @@
         <button data-path="root">打开工作台文件夹</button>
         <button data-path="data">打开数据文件夹</button>
         <button data-path="report">打开本期 report.md</button>
-        <button data-path="strategy">策略基线</button>
+        <button id="change-handle">修改 X 用户名</button>
+        <button data-path="strategy">查看策略基线</button>
         <button data-path="workflow">周报流程</button>
         <button data-path="config">编辑 config.json</button>
       </div></details>
@@ -29,6 +30,18 @@
   <div class="workspace">
     <aside aria-label="历次周报"><h2>每周报告</h2><div id="reports"></div><p id="count"></p></aside>
     <main>
+      <section id="setup" aria-labelledby="setup-title" hidden>
+        <form id="handle-form">
+          <h1 id="setup-title">设置 X 用户名</h1>
+          <p>填入要分析的 X 用户名，保存后登录该账号并更新数据。</p>
+          <label for="handle">X 用户名</label>
+          <input id="handle" name="handle" placeholder="@your_handle" autocomplete="off" spellcheck="false"
+                 maxlength="16" pattern="@?[A-Za-z0-9_]{1,15}" required aria-describedby="handle-help handle-error">
+          <p id="handle-help">可带或不带 @，限 1–15 位字母、数字或下划线。设置仅保存在本机。</p>
+          <p id="handle-error" role="alert"></p>
+          <div><button id="save-handle" type="submit">保存用户名</button> <button id="cancel-handle" type="button" hidden>取消</button></div>
+        </form>
+      </section>
       <div id="empty" role="status"><h1>还没有周报</h1><p id="guide"></p></div>
       <iframe id="report" title="所选周报" sandbox="allow-scripts allow-same-origin" hidden></iframe>
       <section id="logs" aria-label="运行日志" hidden><h2>运行日志</h2><pre id="log">还没有运行记录</pre></section>

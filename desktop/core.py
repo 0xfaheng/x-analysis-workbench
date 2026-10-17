@@ -22,7 +22,7 @@ EXIT_MESSAGES = {
     3: "X 未登录：请登录 @{handle} 后重试。",
     4: "采集或分析失败：请检查浏览器运行状态，详情见运行日志。",
     5: "缺少 markdown 依赖：请安装依赖或重新安装工作台，详情见运行日志。",
-    6: "缺少浏览器依赖：请安装 Microsoft Edge；仍失败时重新安装工作台，详情见运行日志。",
+    6: "缺少浏览器依赖：请安装 Microsoft Edge 或 Google Chrome；仍失败时重新安装工作台，详情见运行日志。",
     7: "已有任务在运行：请等待采集、分析或登录任务结束后重试。",
 }
 
@@ -57,7 +57,8 @@ def initialize_root(root, resources=None):
     sources = [(resources / "config.json", root / "config.json")]
     sources += [(p, root / "docs" / p.relative_to(resources / "docs"))
                 for p in (resources / "docs").rglob("*.md")
-                if "开发记录" not in p.relative_to(resources / "docs").parts]
+                if "开发记录" not in p.relative_to(resources / "docs").parts and p.name != "策略基线.md"]
+    sources.append((resources / "docs/策略基线.template.md", root / "docs/策略基线.md"))
     for src, dst in sources:
         dst.parent.mkdir(parents=True, exist_ok=True)
         if src.resolve() == dst.resolve() or dst.exists():
@@ -116,7 +117,10 @@ def exit_message(code, handle="", kind="collect"):
         return "报告网页已重新生成。"
     if code == 0 and kind == "assistant":
         return "助手已完成本周周报。"
-    return EXIT_MESSAGES.get(code, f"运行失败（退出码 {code}），详情见运行日志。").format(handle=handle)
+    message = EXIT_MESSAGES.get(code, f"运行失败（退出码 {code}），详情见运行日志。")
+    if code == 6 and sys.platform == "darwin":
+        message = message.replace("Microsoft Edge 或 Google Chrome", "Google Chrome 或 Microsoft Edge")
+    return message.format(handle=handle)
 
 
 def job_command(root, kind, day=None, *, is_frozen=None, executable=None, entry=None, log_path=None):

@@ -17,7 +17,7 @@ from pathlib import Path
 # run_weekly.sh 使用 -I，需显式加入本脚本目录才能导入共用工具。
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from file_utils import atomic_write_text, ensure_utf8_stdio
-from config_utils import load_config
+from config_utils import load_config, require_handle
 
 SUG_START = "<!-- SUGGESTIONS:START -->"
 SUG_END = "<!-- SUGGESTIONS:END -->"
@@ -400,6 +400,10 @@ def main(argv=None):
     d = date.fromisoformat(args.date)
     raw = root / "data" / "raw" / d.isoformat()
     cfg = load_config(root)
+    try:
+        require_handle(cfg)
+    except ValueError as error:
+        ap.exit(2, f"配置错误：{error}\n")
 
     meta = json.loads((raw / "meta.json").read_text(encoding="utf-8")) if (raw / "meta.json").exists() else {}
     if meta.get("ok") is False:

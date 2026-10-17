@@ -14,7 +14,7 @@ import markdown
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from file_utils import atomic_write_text, ensure_utf8_stdio
-from config_utils import load_config
+from config_utils import load_config, require_handle
 
 SUG_START = "<!-- SUGGESTIONS:START -->"
 SUG_END = "<!-- SUGGESTIONS:END -->"
@@ -264,6 +264,7 @@ def render_page(root, d, a, md_text, nav, history_list):
     data = dict(a)
     phase_weekly = None
     cfg = load_config(root)
+    require_handle(cfg)
     for ph in cfg["phase_targets"]["phases"]:
         if ph["name"] == a["phase"]["name"]:
             phase_weekly = ph["weekly"]
@@ -285,6 +286,10 @@ def main(argv=None):
     ap.add_argument("--date")
     args = ap.parse_args(argv)
     root = Path(args.root)
+    try:
+        require_handle(load_config(root))
+    except ValueError as error:
+        ap.exit(2, f"配置错误：{error}\n")
     reports_dir = root / "reports"
     reports = sorted(p for p in reports_dir.iterdir() if p.is_dir() and (p / "analysis.json").is_file()) if reports_dir.exists() else []
     if not reports:

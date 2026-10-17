@@ -1,11 +1,11 @@
-name: Windows 安装包与发布
+name: 双平台安装包与发布
 on:
   push:
     tags: ['v*']
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   windows:
@@ -45,11 +45,69 @@ jobs:
           path: |
             dist/XWorkbench-Setup-${{ env.APP_VERSION }}.exe
             dist/XWorkbench-${{ env.APP_VERSION }}-portable.zip
-      - name: 创建 GitHub Release
-        if: github.ref_type == 'tag'
-        shell: pwsh
+
+  macos:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    env:
+      PYTHONUTF8: '1'
+      XWB_BROWSER_TESTS: '1'
+      XWB_BROWSER_CHANNEL: chrome
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: arm64
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            packaging/requirements-macos.txt
+      - name: 读取版本并校验标签
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(python scripts/version.py)"
+          if [[ "$GITHUB_REF_TYPE" == tag && "$GITHUB_REF_NAME" != "v$VERSION" ]]; then
+            echo "标签与 scripts/version.py 中的版本不一致" >&2
+            exit 1
+          fi
+          echo "APP_VERSION=$VERSION" >> "$GITHUB_ENV"
+          python packaging/release_notes.py --version "$VERSION" --out release-notes.md
+      - name: 测试、打包及冻结包冒烟
+        run: bash packaging/build_macos.sh python
+      - uses: actions/upload-artifact@v4
+        with:
+          name: XWorkbench-${{ env.APP_VERSION }}-macOS-arm64
+          if-no-files-found: error
+          path: |
+            dist/XWorkbench-${{ env.APP_VERSION }}-macOS-arm64.dmg
+            dist/XWorkbench-${{ env.APP_VERSION }}-macOS-arm64.zip
+
+  publish:
+    needs: [windows, macos]
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: XWorkbench-*
+          path: dist
+          merge-multiple: true
+      - name: 一次性发布四个附件
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create $env:GITHUB_REF_NAME --verify-tag --title "X 分析工作台 v$env:APP_VERSION" --notes-file release-notes.md "dist/XWorkbench-Setup-$env:APP_VERSION.exe" "dist/XWorkbench-$env:APP_VERSION-portable.zip"
-          if ($LASTEXITCODE -ne 0) { throw "创建 Release 失败" }
+          set -euo pipefail
+          VERSION="$(python scripts/version.py)"
+          [[ "$GITHUB_REF_NAME" == "v$VERSION" ]] || { echo "标签与版本不一致" >&2; exit 1; }
+          python packaging/release_notes.py --version "$VERSION" --out release-notes.md
+          gh release create "$GITHUB_REF_NAME" --verify-tag --title "X 分析工作台 v$VERSION" --notes-file release-notes.md \
+            "dist/XWorkbench-Setup-$VERSION.exe" "dist/XWorkbench-$VERSION-portable.zip" \
+            "dist/XWorkbench-$VERSION-macOS-arm64.dmg" "dist/XWorkbench-$VERSION-macOS-arm64.zip"
