@@ -1,0 +1,16 @@
+# 个人数据与生成物（只留在本机，不进仓库）
+data/
+reports/
+index.html
+config.local.json
+
+# 构建产物
+X分析工作台.app/
+app/build/
+build/
+dist/
+*.spec.bak
+__pycache__/
+*.pyc
+.venv/
+.DS_Store

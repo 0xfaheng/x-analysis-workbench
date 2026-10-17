@@ -1,0 +1,61 @@
+{
+  "handle": "0xfaheng",
+  "program": {
+    "verified_home_impressions_90d_target": 500000,
+    "verified_followers_target": 500
+  },
+  "phase_targets": {
+    "_note": "阶段目标来自 2026-10-15 诊断；每月复盘时可调整，analyze.py 按 report_date 选取当前生效的阶段",
+    "phases": [
+      {
+        "name": "第 1 阶段：止跌换轨",
+        "until": "2026-11-15",
+        "weekly": {
+          "main_posts_min": 7,
+          "main_posts_max": 14,
+          "median_impressions_min": 1000,
+          "english_posts_min": 2,
+          "ai_share_min": 0.6,
+          "risk_posts_max": 0,
+          "verified_impressions_week_min": 15000,
+          "breakout_threshold": 3000,
+          "breakout_min": 1
+        }
+      },
+      {
+        "name": "第 2 阶段：出圈冲量",
+        "until": "2027-01-15",
+        "weekly": {
+          "main_posts_min": 7,
+          "main_posts_max": 14,
+          "median_impressions_min": 1500,
+          "english_posts_min": 3,
+          "ai_share_min": 0.6,
+          "risk_posts_max": 0,
+          "verified_impressions_week_min": 38500,
+          "breakout_threshold": 10000,
+          "breakout_min": 1
+        }
+      }
+    ]
+  },
+  "categories": {
+    "_note": "按顺序匹配，先命中先归类；正则不区分大小写",
+    "web3": "\\$[A-Za-z]{2,}|0x[0-9a-fA-F]{8,}|bc1[a-z0-9]{6,}|币安|链上|公链|撸|空投|牛市|熊市|meme|\\bca\\b|\\bbtc\\b|\\beth\\b|\\bsol(ana)?\\b|\\bbsc\\b|pump|alpha|交易所|行情|\\brgb\\b|\\bnft\\b|\\bath\\b|gas费|robinhood|代币|钱包|发射台|聪明钱|梭哈|抄底|web3",
+    "AI": "\\bAI\\b|ChatGPT|Claude|Codex|Grok|Gemini|GPT|大模型|模型|GEO|FDE|智能体|agent|LLM|Opus|Sonnet|DeepSeek|Kimi|MiniMax|豆包|元宝|自动化|编程|vibe|skill|prompt|提示词|工作流|插件|开源|开发|获客系统|公众号接口|workbuddy|openclaw|cursor|mirasim"
+  },
+  "risk_rules": {
+    "contract_address": "0x[0-9a-fA-F]{20,}|\\b[1-9A-HJ-NP-Za-km-z]{32,44}\\b",
+    "gray_market": "代充|充值代理|招.{0,6}代理|低价.{0,4}充值|加我\\s*v|加v|(?<![A-Za-z])vx[:：]|微信[:：]\\s*[A-Za-z0-9_-]{5,}",
+    "solicitation": "求(点赞|转发|关注|收藏|互动)|点赞(并|\\+|加)?转发|帮忙转发|互关|回关|关注我|评论区扣|扣1|点个\\s*(赞|star|关注|收藏)",
+    "hype_call": "追高|梭哈|必涨|百倍|千倍|(?<![A-Za-z0-9])\\d+x(?![a-z])|冲\\s*\\d+[mMbB]|还得拉"
+  },
+  "one_liner_max_chars": 25,
+  "english_ratio_min": 0.6,
+  "app": {
+    "_note": "桌面应用「生成完整周报」按钮通过 mirasim 立即运行这个定时任务",
+    "mirasim_schedule_id": "",
+    "mirasim_workspace": "",
+    "mirasim_port": 4970
+  }
+}
