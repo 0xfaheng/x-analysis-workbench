@@ -14,7 +14,7 @@ from pathlib import Path
 # -I 不包含脚本目录；同时让 PyInstaller 能发现下面的静态模块导入。
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from config_utils import load_config
-from file_utils import atomic_write_text
+from file_utils import atomic_write_text, ensure_utf8_stdio
 from run_lock import LockBusyError, RunLock
 
 
@@ -176,4 +176,5 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
+    ensure_utf8_stdio()
     sys.exit(main())

@@ -22,3 +22,12 @@ def atomic_write_text(path, text):
     finally:
         if temp is not None:
             temp.unlink(missing_ok=True)
+
+
+def ensure_utf8_stdio():
+    """Windows 管道默认用 ANSI 代码页，-I 又会忽略 PYTHONUTF8，中文输出前统一切到 UTF-8。"""
+    import sys
+    for stream in (sys.stdout, sys.stderr):
+        if stream is not None and hasattr(stream, "reconfigure") \
+                and (stream.encoding or "").lower().replace("-", "") != "utf8":
+            stream.reconfigure(encoding="utf-8", errors="replace")

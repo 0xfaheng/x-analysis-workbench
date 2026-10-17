@@ -16,7 +16,7 @@ from pathlib import Path
 
 # run_weekly.sh 使用 -I，需显式加入本脚本目录才能导入共用工具。
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from file_utils import atomic_write_text
+from file_utils import atomic_write_text, ensure_utf8_stdio
 from config_utils import load_config
 
 SUG_START = "<!-- SUGGESTIONS:START -->"
@@ -510,4 +510,5 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
+    ensure_utf8_stdio()
     main()

@@ -13,7 +13,7 @@ from pathlib import Path
 import markdown
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from file_utils import atomic_write_text
+from file_utils import atomic_write_text, ensure_utf8_stdio
 from config_utils import load_config
 
 SUG_START = "<!-- SUGGESTIONS:START -->"
@@ -320,4 +320,5 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
+    ensure_utf8_stdio()
     main()
