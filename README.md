@@ -21,9 +21,10 @@
 
 - 策略和规则：`docs/策略基线.md`；每周执行步骤：`docs/周报流程.md`。
 - 命令行手动运行：`./scripts/run_weekly.sh`（采集 + 分析 + 生成网页）→ 在 `reports/<日期>/report.md` 写建议 → `python3 scripts/render.py --root .`
-- 退出码：3 = X 未登录，4 = ego 浏览器连不上，5 = 找不到装有 markdown 的 Python。
+- 退出码：3 = X 未登录，4 = 采集失败（含 ego 浏览器连接失败），5 = 找不到装有 markdown 的 Python。
 - 配置：`config.json`（分类关键词、风险规则、阶段目标、mirasim 定时任务 ID）。
 - 修改应用后重新编译：`app/build.sh`（源码 `app/Sources/main.swift`）。
+- 离线测试：`/Library/Frameworks/Python.framework/Versions/3.13/bin/python3 -m unittest discover -s tests`（使用临时合成数据，不采集、不改真实报告；网页渲染需安装 `markdown`）。Node 与 zsh 可用时还会检查脚本语法，Node 也用于执行网页脚本的 DOM 替身测试。
 - `index.html` 是同一份报告的网页版，没有应用时也可以用浏览器打开。
 
 ## 目录

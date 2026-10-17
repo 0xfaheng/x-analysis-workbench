@@ -30,7 +30,7 @@ if [[ -z "$PY" ]]; then
 fi
 
 RAW="$ROOT/data/raw/$DATE"
-HANDLE="$("$PY" -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["handle"])' "$ROOT/config.json")"
+HANDLE="$("$PY" -I -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["handle"])' "$ROOT/config.json")"
 EGO="$(command -v ego-browser || echo "$HOME/.local/bin/ego-browser")"
 
 if (( COLLECT )); then
@@ -46,12 +46,12 @@ if (( COLLECT )); then
   rc=$?
   set -e
   # 退出码约定：3 = X 未登录，4 = 采集失败（工作台应用据此提示）
-  if "$PY" -I -c 'import json,sys; sys.exit(0 if json.load(open(sys.argv[1])).get("reason") == "not_logged_in" else 1)' "$RAW/meta.json" 2>/dev/null; then
+  if "$PY" -I -c 'import json,sys; sys.exit(0 if json.load(open(sys.argv[1], encoding="utf-8")).get("reason") == "not_logged_in" else 1)' "$RAW/meta.json" 2>/dev/null; then
     echo "X 未登录：请在 ego 浏览器里登录 @$HANDLE 后重试" >&2
     exit 3
   fi
   if (( rc != 0 )); then
-    echo "采集失败（ego-browser 退出码 $rc），请确认 ego lite 正在运行" >&2
+    echo "采集失败（ego-browser 退出码 $rc），请检查 $RAW/meta.json 和 ego lite 运行状态" >&2
     exit 4
   fi
 fi

@@ -6,11 +6,17 @@ report.md 中「下周调整建议」区块由助手填写；重复运行本脚�
 """
 import argparse
 import csv
+import html
 import json
 import re
 import statistics
-from datetime import date, datetime, timedelta
+import sys
+from datetime import date, timedelta
 from pathlib import Path
+
+# run_weekly.sh 使用 -I，需显式加入本脚本目录才能导入共用工具。
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from file_utils import atomic_write_text
 
 SUG_START = "<!-- SUGGESTIONS:START -->"
 SUG_END = "<!-- SUGGESTIONS:END -->"
@@ -23,16 +29,24 @@ def parse_num(s):
     if s is None:
         return None
     s = str(s).strip().replace(",", "")
-    m = re.fullmatch(r"([\d.]+)\s*([KMkm万]?)", s)
+    m = re.fullmatch(r"(\d+(?:\.\d*)?|\.\d+)\s*([KMkm万]?)", s)
     if not m:
         return None
     v = float(m.group(1))
     mult = {"k": 1e3, "m": 1e6, "万": 1e4}.get(m.group(2).lower(), 1)
-    return int(round(v * mult))
+    try:
+        return int(round(v * mult))
+    except (ValueError, OverflowError):
+        return None
 
 
 def parse_date(s):
-    return datetime.strptime(s.strip(), "%a, %b %d, %Y").date()
+    # 导出始终使用英文缩写，不依赖 Windows/macOS 的系统语言。
+    m = re.fullmatch(r"(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun),\s+([A-Za-z]{3})\s+(\d{1,2}),\s+(\d{4})", s.strip(), re.I)
+    months = "jan feb mar apr may jun jul aug sep oct nov dec".split()
+    if not m or m[1].lower() not in months:
+        raise ValueError(f"无效的导出日期：{s}")
+    return date(int(m[3]), months.index(m[1].lower()) + 1, int(m[2]))
 
 
 def fmt(n):
@@ -66,7 +80,7 @@ def load_eligibility(raw):
     p = raw / "eligibility.json"
     if not p.exists():
         return None
-    data = json.loads(p.read_text())
+    data = json.loads(p.read_text(encoding="utf-8"))
     text = data.get("text", "")
     items = []
     for it in data.get("items", []):
@@ -91,7 +105,7 @@ def load_followers(raw):
     p = raw / "overview_all_3m.txt"
     if not p.exists():
         return {}
-    t = p.read_text()
+    t = p.read_text(encoding="utf-8")
     m = re.search(r"Verified followers\n(\S+)\n[\s\S]*?/\s*\n(\S+)", t)
     if not m:
         return {}
@@ -117,8 +131,17 @@ def load_posts(raw, cfg):
         return posts
     cats = {k: re.compile(v, re.I) for k, v in cfg["categories"].items() if not k.startswith("_")}
     risks = {k: re.compile(v, re.I) for k, v in cfg["risk_rules"].items()}
+    metrics = [("impressions", "Impressions"), ("likes", "Likes"), ("engagements", "Engagements"),
+               ("bookmarks", "Bookmarks"), ("shares", "Shares"), ("new_follows", "New follows"),
+               ("replies", "Replies"), ("reposts", "Reposts"), ("profile_visits", "Profile visits"),
+               ("url_clicks", "URL Clicks")]
     with p.open(newline="", encoding="utf-8-sig") as f:
-        for r in csv.DictReader(f):
+        reader = csv.DictReader(f)
+        required = {"Post id", "Date", "Post text", "Post Link"} | {col for _, col in metrics}
+        missing = required - set(reader.fieldnames or [])
+        if missing:
+            raise ValueError("帖子 CSV 缺少必要列：" + "、".join(sorted(missing)))
+        for r in reader:
             text = r["Post text"].strip()
             is_reply = text.startswith("@")
             hits = {k: len(rx.findall(text)) for k, rx in cats.items()}
@@ -139,11 +162,7 @@ def load_posts(raw, cfg):
                 "one_liner": len(body.strip()) <= cfg["one_liner_max_chars"],
                 # 喊单式表述只在 web3 帖里算风险，避免把「Pro 20x」这类 AI 套餐名误判
                 "risks": [k for k, rx in risks.items() if rx.search(body) and (k != "hype_call" or best == "web3")],
-                **{k: int(r[col] or 0) for k, col in [
-                    ("impressions", "Impressions"), ("likes", "Likes"), ("engagements", "Engagements"),
-                    ("bookmarks", "Bookmarks"), ("shares", "Shares"), ("new_follows", "New follows"),
-                    ("replies", "Replies"), ("reposts", "Reposts"), ("profile_visits", "Profile visits"),
-                    ("url_clicks", "URL Clicks")]},
+                **{k: int(r[col] or 0) for k, col in metrics},
             })
     return posts
 
@@ -238,11 +257,14 @@ def evaluate_targets(phase, wk, week_main, verified_week):
 
 
 def previous_suggestions(root, d):
-    reports = sorted(p for p in (root / "reports").iterdir() if p.is_dir() and p.name < d.isoformat())
+    reports_dir = root / "reports"
+    if not reports_dir.exists():
+        return None
+    reports = sorted(p for p in reports_dir.iterdir() if p.is_dir() and p.name < d.isoformat())
     for rp in reversed(reports):
         md = rp / "report.md"
         if md.exists():
-            t = md.read_text()
+            t = md.read_text(encoding="utf-8")
             m = re.search(re.escape(SUG_START) + r"(.*?)" + re.escape(SUG_END), t, re.S)
             if m and SUG_PLACEHOLDER not in m.group(1):
                 return {"date": rp.name, "text": m.group(1).strip()}
@@ -252,6 +274,11 @@ def previous_suggestions(root, d):
 def short(text, n=60):
     t = re.sub(r"\s+", " ", text).strip()
     return t if len(t) <= n else t[:n] + "…"
+
+
+def escape_markdown(text):
+    # 先处理 HTML，再转义链接文字、表格及行内格式中的特殊符号。
+    return re.sub(r"([\\`*_\[\]()|])", r"\\\1", html.escape(text, quote=False))
 
 
 # ---------- 报告 ----------
@@ -275,7 +302,7 @@ def build_report(a):
     else:
         L.append("- 未能读取资格页数据，请人工核对 Creator Studio。")
     for it in (e or {}).get("items", []):
-        L.append(f"- {'✅' if it['met'] else '❌'} {it['text']}")
+        L.append(f"- {'✅' if it['met'] else '❌'} {escape_markdown(it['text'])}")
     f = a["followers"]
     if f:
         L.append(f"- 认证粉丝 {fmt(f.get('verified_followers'))} / 总粉丝 {fmt(f.get('followers'))}")
@@ -326,12 +353,12 @@ def build_report(a):
     L.append("**曝光最高**")
     L.append("")
     for p in a["top_posts"]:
-        L.append(f"- {fmt(p['impressions'])} · {p['category']} · {p['date']} · [{short(p['text'])}]({p['link']})")
+        L.append(f"- {fmt(p['impressions'])} · {p['category']} · {p['date']} · [{escape_markdown(short(p['text']))}]({p['link']})")
     L.append("")
     L.append("**曝光最低**")
     L.append("")
     for p in a["bottom_posts"]:
-        L.append(f"- {fmt(p['impressions'])} · {p['category']} · {p['date']} · [{short(p['text'])}]({p['link']})")
+        L.append(f"- {fmt(p['impressions'])} · {p['category']} · {p['date']} · [{escape_markdown(short(p['text']))}]({p['link']})")
     L.append("")
     L.append("## 6. 风险提示")
     L.append("")
@@ -339,7 +366,7 @@ def build_report(a):
         names = {"contract_address": "合约地址", "gray_market": "代充/招代理/导流", "solicitation": "求互动",
                  "hype_call": "喊单式表述"}
         for p in a["risk_posts"]:
-            L.append(f"- {'、'.join(names.get(r, r) for r in p['risks'])} · {p['date']} · [{short(p['text'])}]({p['link']})")
+            L.append(f"- {'、'.join(names.get(r, r) for r in p['risks'])} · {p['date']} · [{escape_markdown(short(p['text']))}]({p['link']})")
         L.append("")
         L.append("以上为关键词规则命中，可能有误判，请人工判断是否删除或调整写法。")
     else:
@@ -371,18 +398,22 @@ def main():
     root = Path(args.root)
     d = date.fromisoformat(args.date)
     raw = root / "data" / "raw" / d.isoformat()
-    cfg = json.loads((root / "config.json").read_text())
+    cfg = json.loads((root / "config.json").read_text(encoding="utf-8"))
 
-    meta = json.loads((raw / "meta.json").read_text()) if (raw / "meta.json").exists() else {}
+    meta = json.loads((raw / "meta.json").read_text(encoding="utf-8")) if (raw / "meta.json").exists() else {}
     if meta.get("ok") is False:
         raise SystemExit(f"采集失败：{meta.get('reason')}（{raw}/meta.json）")
 
     win, pwin = window(d, 7), (d - timedelta(days=14), d - timedelta(days=8))
-    posts = load_posts(raw, cfg)
-    if not posts:
+    if not (raw / "content_90d.csv").is_file():
         raise SystemExit(f"缺少帖子数据：{raw}/content_90d.csv")
+    try:
+        posts = load_posts(raw, cfg)
+    except ValueError as error:
+        raise SystemExit(f"帖子数据无效：{error}") from None
     daily_all = load_daily(raw, "overview_all.csv")
-    daily_ver = load_daily(raw, "overview_verified.csv")
+    # 本次未导出认证数据时，不复用同目录上一次采集留下的 CSV；兼容旧版无 files 的元数据。
+    daily_ver = load_daily(raw, "overview_verified.csv") if "files" not in meta or "overview_verified.csv" in meta["files"] else {}
     elig = load_eligibility(raw)
     followers = load_followers(raw)
 
@@ -392,13 +423,13 @@ def main():
     main_wk = sorted((p for p in wk_posts if not p["reply"]), key=lambda p: -p["impressions"])
 
     impr_ver_week = sum_daily(daily_ver, win)
-    ver_90 = sum(v.get("Impressions", 0) for v in daily_ver.values()) or None
+    ver_90 = sum_daily(daily_ver, window(d, 90))
     elig_val = (elig or {}).get("verified_home_90d")
-    ratio = (elig_val / ver_90) if (elig_val and ver_90) else None
-    qualified_week = int(impr_ver_week * ratio) if (impr_ver_week is not None and ratio) else None
+    ratio = (elig_val / ver_90) if (elig_val is not None and ver_90) else None
+    qualified_week = int(impr_ver_week * ratio) if (impr_ver_week is not None and ratio is not None) else None
 
     hist_path = root / "data" / "history.json"
-    history = json.loads(hist_path.read_text()) if hist_path.exists() else []
+    history = json.loads(hist_path.read_text(encoding="utf-8")) if hist_path.exists() else []
     prev_hist = [h for h in history if h["report_date"] < d.isoformat()]
     prev_elig = prev_hist[-1].get("eligibility_verified_home_90d") if prev_hist else None
 
@@ -458,20 +489,20 @@ def main():
     }
     history = [h for h in history if h["report_date"] != entry["report_date"]] + [entry]
     history.sort(key=lambda h: h["report_date"])
-    hist_path.write_text(json.dumps(history, ensure_ascii=False, indent=2))
+    atomic_write_text(hist_path, json.dumps(history, ensure_ascii=False, indent=2))
     a["history"] = history
 
     out = root / "reports" / d.isoformat()
     out.mkdir(parents=True, exist_ok=True)
-    (out / "analysis.json").write_text(json.dumps(a, ensure_ascii=False, indent=2))
+    atomic_write_text(out / "analysis.json", json.dumps(a, ensure_ascii=False, indent=2))
 
     md_path = out / "report.md"
     new_md = build_report(a)
     if md_path.exists():
-        m = re.search(re.escape(SUG_START) + r".*?" + re.escape(SUG_END), md_path.read_text(), re.S)
+        m = re.search(re.escape(SUG_START) + r".*?" + re.escape(SUG_END), md_path.read_text(encoding="utf-8"), re.S)
         if m and SUG_PLACEHOLDER not in m.group(0):
             new_md = re.sub(re.escape(SUG_START) + r".*?" + re.escape(SUG_END), lambda _: m.group(0), new_md, flags=re.S)
-    md_path.write_text(new_md)
+    atomic_write_text(md_path, new_md)
     print(json.dumps({"report": str(md_path), "analysis": str(out / "analysis.json"),
                       "eligibility": elig_val, "main_posts": wk["main_posts"], "median": wk["median"],
                       "targets_met": f"{entry['targets_met']}/{entry['targets_total']}"}, ensure_ascii=False))

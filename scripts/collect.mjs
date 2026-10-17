@@ -4,15 +4,12 @@
 
 const fs = await import("node:fs/promises");
 const path = await import("node:path");
-await fs.mkdir(OUT_DIR, { recursive: true });
-
 const meta = { started_at: new Date().toISOString(), handle: HANDLE, files: {}, warnings: [] };
 const writeMeta = (extra = {}) =>
-  fs.writeFile(path.join(OUT_DIR, "meta.json"), JSON.stringify({ ...meta, ...extra }, null, 2));
+  fs.writeFile(path.join(OUT_DIR, "meta.json"), JSON.stringify({ ...meta, ...extra }, null, 2), "utf8");
 
-const task = await taskSpace("X 周报采集");
-meta.space_id = task.spaceId;
-const page = task.page("p1");
+let task, page;
+let step = "初始化";
 
 async function mainText() {
   return page.evaluate(() => (document.querySelector("main") || document.body).innerText);
@@ -40,71 +37,124 @@ async function setVerifiedOnly(want) {
 }
 
 async function downloadCsv(name) {
-  const pending = page.waitForEvent("download", { timeout: 45000 });
-  await page.click("loc=css:button[aria-label='Download CSV'] >> nth=0", { label: "download analytics csv" });
-  const d = await pending;
+  step = `下载 ${name}`;
+  // 同时挂上两个异常处理，点击失败时下载超时也不会成为未处理的拒绝。
+  const [d] = await Promise.all([
+    page.waitForEvent("download", { timeout: 45000 }),
+    page.click("loc=css:button[aria-label='Download CSV'] >> nth=0", { label: "download analytics csv" }),
+  ]);
   const out = path.join(OUT_DIR, name);
   await d.saveAs(out);
   meta.files[name] = d.suggestedFilename();
 }
 
-// 1. 登录检查
-await page.goto("https://x.com/home");
-await page.waitForSelector("loc=css:[data-testid='SideNav_AccountSwitcher_Button']", { timeout: 25000 }).catch(() => {});
-const acct = await page.evaluate(
-  () => document.querySelector("[data-testid='SideNav_AccountSwitcher_Button']")?.innerText || null,
-);
-if (!acct || !acct.toLowerCase().includes("@" + HANDLE.toLowerCase())) {
-  await writeMeta({ ok: false, reason: "not_logged_in", account_seen: acct, finished_at: new Date().toISOString() });
-  await task.finish({ keep: [] });
-  console.log(JSON.stringify({ ok: false, reason: "not_logged_in", account_seen: acct }));
-  process.exit(3);
-}
+async function collect() {
+  await fs.mkdir(OUT_DIR, { recursive: true });
+  await writeMeta({ ok: false, reason: "in_progress" });
+  step = "创建任务空间";
+  task = await taskSpace("X 周报采集");
+  meta.space_id = task.spaceId;
+  page = task.page("p1");
 
-// 2. 原创内容奖励资格页
-await page.goto("https://x.com/i/jf/creators/original_content_rewards");
-await page.waitForTimeout(7000);
-const eligibility = await page.evaluate(() => {
-  const main = document.querySelector("main") || document.body;
-  // 以状态图标（实心对勾 = 已满足，圆圈叉号 = 未满足）定位清单项，再取同一行的文字
-  const STATUS = ["M12 1.75C6.34", "M12 3.75c"];
-  const items = [...main.querySelectorAll("svg")]
-    .map((s) => ({ s, d: s.querySelector("path")?.getAttribute("d") || "" }))
-    .filter(({ d }) => STATUS.some((pre) => d.startsWith(pre)))
-    .map(({ s, d }) => {
-      let c = s.parentElement;
-      while (c && c !== main && !c.querySelector("p")) c = c.parentElement;
-      return { text: c?.querySelector("p")?.innerText.trim() || "", icon: d.slice(0, 16) };
-    })
-    .filter((it) => it.text);
-  return { text: main.innerText, items };
-});
-await fs.writeFile(path.join(OUT_DIR, "eligibility.json"), JSON.stringify(eligibility, null, 2));
+  // 1. 登录检查
+  step = "登录检查";
+  await page.goto("https://x.com/home");
+  await page.waitForSelector("loc=css:[data-testid='SideNav_AccountSwitcher_Button']", { timeout: 25000 }).catch(() => {});
+  const acct = await page.evaluate(
+    () => document.querySelector("[data-testid='SideNav_AccountSwitcher_Button']")?.innerText || null,
+  );
+  if (!acct || !acct.toLowerCase().includes("@" + HANDLE.toLowerCase())) {
+    await writeMeta({ ok: false, reason: "not_logged_in", account_seen: acct, finished_at: new Date().toISOString() });
+    console.log(JSON.stringify({ ok: false, reason: "not_logged_in", account_seen: acct }));
+    return 3;
+  }
 
-// 3. 账号概览：近 3 个月，全部用户 + 仅认证用户
-await page.goto("https://x.com/i/account_analytics");
-await page.waitForTimeout(8000);
-await setVerifiedOnly(false);
-await selectRange("3M");
-await fs.writeFile(path.join(OUT_DIR, "overview_all_3m.txt"), await mainText());
-await downloadCsv("overview_all.csv");
-if (await setVerifiedOnly(true)) {
-  await fs.writeFile(path.join(OUT_DIR, "overview_verified_3m.txt"), await mainText());
-  await downloadCsv("overview_verified.csv");
+  // 2. 原创内容奖励资格页
+  step = "收益资格页";
+  await page.goto("https://x.com/i/jf/creators/original_content_rewards");
+  await page.waitForTimeout(7000);
+  const eligibility = await page.evaluate(() => {
+    const main = document.querySelector("main") || document.body;
+    // 以状态图标（实心对勾 = 已满足，圆圈叉号 = 未满足）定位清单项，再取同一行的文字
+    const STATUS = ["M12 1.75C6.34", "M12 3.75c"];
+    const items = [...main.querySelectorAll("svg")]
+      .map((s) => ({ s, d: s.querySelector("path")?.getAttribute("d") || "" }))
+      .filter(({ d }) => STATUS.some((pre) => d.startsWith(pre)))
+      .map(({ s, d }) => {
+        let c = s.parentElement;
+        while (c && c !== main && !c.querySelector("p")) c = c.parentElement;
+        return { text: c?.querySelector("p")?.innerText.trim() || "", icon: d.slice(0, 16) };
+      })
+      .filter((it) => it.text);
+    return { text: main.innerText, items };
+  });
+  await fs.writeFile(path.join(OUT_DIR, "eligibility.json"), JSON.stringify(eligibility, null, 2), "utf8");
+
+  // 3. 账号概览：近 3 个月，全部用户 + 仅认证用户
+  step = "账号概览";
+  await page.goto("https://x.com/i/account_analytics");
+  await page.waitForTimeout(8000);
   await setVerifiedOnly(false);
+  await selectRange("3M");
+  await fs.writeFile(path.join(OUT_DIR, "overview_all_3m.txt"), await mainText(), "utf8");
+  await downloadCsv("overview_all.csv");
+  step = "认证用户概览";
+  if (await setVerifiedOnly(true)) {
+    await fs.writeFile(path.join(OUT_DIR, "overview_verified_3m.txt"), await mainText(), "utf8");
+    await downloadCsv("overview_verified.csv");
+    step = "恢复全部用户概览";
+    await setVerifiedOnly(false);
+  }
+
+  // 4. 帖子明细：近 90 天（含回复，分析时区分）
+  step = "帖子明细页";
+  await page.goto("https://x.com/i/account_analytics/content?type=posts&sort=date&dir=desc&days=90");
+  await page.waitForTimeout(8000);
+  await downloadCsv("content_90d.csv");
+
+  // 5. 受众画像（文本快照，供参考）
+  step = "受众画像";
+  await page.goto("https://x.com/i/account_analytics/audience");
+  await page.waitForTimeout(7000);
+  await selectRange("28D").catch(() => meta.warnings.push("受众页 28D 切换失败，保留默认范围"));
+  await fs.writeFile(path.join(OUT_DIR, "audience.txt"), await mainText(), "utf8");
+
+  step = "保存采集结果";
+  await writeMeta({ ok: true, finished_at: new Date().toISOString() });
+  return 0;
 }
 
-// 4. 帖子明细：近 90 天（含回复，分析时区分）
-await page.goto("https://x.com/i/account_analytics/content?type=posts&sort=date&dir=desc&days=90");
-await page.waitForTimeout(8000);
-await downloadCsv("content_90d.csv");
+async function recordError(error) {
+  const message = error?.message || String(error);
+  const failure = { ok: false, reason: "error", error: message, step, finished_at: new Date().toISOString() };
+  try {
+    await writeMeta(failure);
+  } catch (metaError) {
+    console.error(`无法保存 meta.json：${metaError?.message || String(metaError)}`);
+  }
+  console.error(JSON.stringify(failure));
+}
 
-// 5. 受众画像（文本快照，供参考）
-await page.goto("https://x.com/i/account_analytics/audience");
-await page.waitForTimeout(7000);
-await selectRange("28D").catch(() => meta.warnings.push("受众页 28D 切换失败，保留默认范围"));
-await fs.writeFile(path.join(OUT_DIR, "audience.txt"), await mainText());
-
-await writeMeta({ ok: true, finished_at: new Date().toISOString() });
-await task.finish({ keep: [] });
+let exitCode = 0;
+try {
+  exitCode = await collect();
+} catch (error) {
+  exitCode = 4;
+  await recordError(error);
+} finally {
+  if (task) {
+    try {
+      await task.finish({ keep: [] });
+    } catch (error) {
+      // 已有失败保留原始原因；未登录的退出码 3 也不能被清理失败覆盖。
+      if (exitCode !== 0) console.error(`任务空间清理失败：${error?.message || String(error)}`);
+      else {
+        exitCode = 4;
+        step = "关闭任务空间";
+        await recordError(error);
+      }
+    }
+  }
+}
+if (exitCode) process.exit(exitCode);
 console.log(JSON.stringify({ ok: true, out: OUT_DIR, files: meta.files, warnings: meta.warnings }));

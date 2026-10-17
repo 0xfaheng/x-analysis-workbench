@@ -101,12 +101,18 @@ enum Runner {
             let pipe = Pipe()
             p.standardOutput = pipe
             p.standardError = pipe
+            let outputLock = NSLock()
             pipe.fileHandleForReading.readabilityHandler = { h in
+                outputLock.lock()
+                defer { outputLock.unlock() }
                 let d = h.availableData
                 if !d.isEmpty { onOutput(String(decoding: d, as: UTF8.self)) }
             }
             p.terminationHandler = { proc in
                 pipe.fileHandleForReading.readabilityHandler = nil
+                // 等待正在进行的读取与回调结束，再排空尾部并返回退出码。
+                outputLock.lock()
+                defer { outputLock.unlock() }
                 let rest = pipe.fileHandleForReading.readDataToEndOfFile()
                 if !rest.isEmpty { onOutput(String(decoding: rest, as: UTF8.self)) }
                 cont.resume(returning: proc.terminationStatus)
@@ -114,6 +120,10 @@ enum Runner {
             do {
                 try p.run()
             } catch {
+                pipe.fileHandleForReading.readabilityHandler = nil
+                p.terminationHandler = nil
+                try? pipe.fileHandleForReading.close()
+                try? pipe.fileHandleForWriting.close()
                 onOutput("无法启动 \(executable)：\(error.localizedDescription)\n")
                 cont.resume(returning: -1)
             }

@@ -7,12 +7,16 @@ import argparse
 import html
 import json
 import re
-from datetime import date
+import sys
 from pathlib import Path
 
 import markdown
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from file_utils import atomic_write_text
+
 SUG_START = "<!-- SUGGESTIONS:START -->"
+SUG_END = "<!-- SUGGESTIONS:END -->"
 
 TEMPLATE = r"""<!doctype html>
 <html lang="zh-CN">
@@ -121,6 +125,7 @@ __HISTORY_LIST__
 </div>
 <script>
 const A = __DATA__;
+const esc = (v) => String(v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const css = (v) => getComputedStyle(document.querySelector('.viz-root')).getPropertyValue(v).trim();
 const fmt = (n) => n == null ? '—' : (Math.abs(n) >= 10000 ? (n / 10000).toFixed(1).replace(/\.0$/, '') + ' 万' : n.toLocaleString('zh-CN'));
 const NS = 'http://www.w3.org/2000/svg';
@@ -129,8 +134,8 @@ function niceMax(v) { if (v <= 0) return 1; const p = Math.pow(10, Math.floor(Ma
 function tipFor(box) { const t = document.createElement('div'); t.className = 'tip'; box.appendChild(t); return t; }
 function placeTip(tip, box, x, y, html) { tip.innerHTML = html; tip.style.display = 'block'; const w = tip.offsetWidth; const bw = box.clientWidth; tip.style.left = Math.min(Math.max(x + 12, 0), bw - w) + 'px'; tip.style.top = (y + 12) + 'px'; }
 function table(id, head, rows, numCols) {
-  const h = '<table><thead><tr>' + head.map((c, i) => `<th class="${numCols.includes(i) ? 'num' : ''}">${c}</th>`).join('') + '</tr></thead><tbody>' +
-    rows.map(r => '<tr>' + r.map((c, i) => `<td class="${numCols.includes(i) ? 'num' : ''}">${c}</td>`).join('') + '</tr>').join('') + '</tbody></table>';
+  const h = '<table><thead><tr>' + head.map((c, i) => `<th class="${numCols.includes(i) ? 'num' : ''}">${esc(c)}</th>`).join('') + '</tr></thead><tbody>' +
+    rows.map(r => '<tr>' + r.map((c, i) => `<td class="${numCols.includes(i) ? 'num' : ''}">${esc(c)}</td>`).join('') + '</tr>').join('') + '</tbody></table>';
   document.getElementById(id).innerHTML = h;
 }
 
@@ -138,19 +143,19 @@ function table(id, head, rows, numCols) {
 (function tiles() {
   const e = A.eligibility || {}; const v = e.verified_home_90d; const T = A.target_90d;
   const p = v != null ? Math.min(v / T, 1) : 0;
-  const checks = (e.items || []).map(i => `<span>${i.met ? '✅ 已满足' : '❌ 未满足'}：${i.text}</span>`).join('');
+  const checks = (e.items || []).map(i => `<span>${i.met ? '✅ 已满足' : '❌ 未满足'}：${esc(i.text)}</span>`).join('');
   const wk = A.week;
   const box = document.getElementById('tiles');
   box.innerHTML = `
   <div class="tile hero"><div class="label">近 90 天认证用户首页曝光（收益门槛 50 万）</div>
-    <div class="value">${fmt(v)} <span style="font-size:15px;font-weight:500;color:var(--text-secondary)">/ 50 万 · ${v != null ? (v / T * 100).toFixed(1) + '%' : '—'}</span></div>
+    <div class="value">${esc(fmt(v))} <span style="font-size:15px;font-weight:500;color:var(--text-secondary)">/ 50 万 · ${v != null ? (v / T * 100).toFixed(1) + '%' : '—'}</span></div>
     <div class="bar" role="img" aria-label="进度 ${(p * 100).toFixed(1)}%"><span style="width:${(p * 100).toFixed(2)}%"></span></div>
-    <div class="note">按本周速度推算的 90 天稳态：${fmt(A.steady_state_90d)}；每周约需 ${fmt(Math.round(T * 7 / 90))}</div>
+    <div class="note">按本周速度推算的 90 天稳态：${esc(fmt(A.steady_state_90d))}；每周约需 ${esc(fmt(Math.round(T * 7 / 90)))}</div>
     <div class="checks">${checks}</div></div>
-  <div class="tile"><div class="label">认证粉丝 / 总粉丝</div><div class="value">${fmt((A.followers || {}).verified_followers)}</div><div class="note">总粉丝 ${fmt((A.followers || {}).followers)}</div></div>
-  <div class="tile"><div class="label">本周认证用户曝光（含回复）</div><div class="value">${fmt(A.impr_verified_week)}</div><div class="note">上周 ${fmt(A.impr_verified_prev)}</div></div>
-  <div class="tile"><div class="label">本周主帖 · 中位数曝光</div><div class="value">${fmt(wk.median)}</div><div class="note">${wk.main_posts} 条主帖，最高 ${fmt(wk.max)}</div></div>
-  <div class="tile"><div class="label">阶段目标达成</div><div class="value">${A.targets.filter(t => t.ok).length} / ${A.targets.length}</div><div class="note">${A.phase.name}</div></div>`;
+  <div class="tile"><div class="label">认证粉丝 / 总粉丝</div><div class="value">${esc(fmt((A.followers || {}).verified_followers))}</div><div class="note">总粉丝 ${esc(fmt((A.followers || {}).followers))}</div></div>
+  <div class="tile"><div class="label">本周认证用户曝光（含回复）</div><div class="value">${esc(fmt(A.impr_verified_week))}</div><div class="note">上周 ${esc(fmt(A.impr_verified_prev))}</div></div>
+  <div class="tile"><div class="label">本周主帖 · 中位数曝光</div><div class="value">${esc(fmt(wk.median))}</div><div class="note">${esc(wk.main_posts)} 条主帖，最高 ${esc(fmt(wk.max))}</div></div>
+  <div class="tile"><div class="label">阶段目标达成</div><div class="value">${A.targets.filter(t => t.ok).length} / ${A.targets.length}</div><div class="note">${esc(A.phase.name)}</div></div>`;
 })();
 
 // ---- 每日曝光折线 ----
@@ -169,6 +174,7 @@ function table(id, head, rows, numCols) {
   const endLabels = [];
   for (const [k, c, name] of series) {
     const pts = d.map((r, i) => r[k] == null ? null : [x(i), y(r[k])]).filter(Boolean);
+    if (!pts.length) continue;
     el('path', { d: pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(''), fill: 'none', stroke: css(c), 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }, svg);
     endLabels.push({ y: pts[pts.length - 1][1] + 4, x: pts[pts.length - 1][0] + 8, name });
   }
@@ -186,7 +192,7 @@ function table(id, head, rows, numCols) {
     cross.setAttribute('x1', x(i)); cross.setAttribute('x2', x(i)); cross.setAttribute('visibility', 'visible');
     series.forEach(([k], j) => { const v = d[i][k]; dots[j].setAttribute('cx', x(i)); dots[j].setAttribute('cy', y(v || 0)); dots[j].setAttribute('visibility', v == null ? 'hidden' : 'visible'); });
     placeTip(tip, box, ev.clientX - box.getBoundingClientRect().left, ev.clientY - box.getBoundingClientRect().top,
-      `<div class="t">${d[i].date}</div>全部用户：<b>${fmt(d[i].all)}</b><br>认证用户：<b>${fmt(d[i].verified)}</b>`);
+      `<div class="t">${esc(d[i].date)}</div>全部用户：<b>${esc(fmt(d[i].all))}</b><br>认证用户：<b>${esc(fmt(d[i].verified))}</b>`);
   });
   hit.addEventListener('mouseleave', () => { tip.style.display = 'none'; cross.setAttribute('visibility', 'hidden'); dots.forEach(c => c.setAttribute('visibility', 'hidden')); });
   table('daily-table', ['日期', '全部用户', '认证用户'], d.slice().reverse().map(r => [r.date, fmt(r.all), fmt(r.verified)]), [1, 2]);
@@ -213,7 +219,7 @@ function table(id, head, rows, numCols) {
     hit.style.cursor = 'pointer';
     hit.addEventListener('click', () => window.open(p.link, '_blank'));
     hit.addEventListener('mousemove', ev => placeTip(tip, box, ev.clientX - box.getBoundingClientRect().left, ev.clientY - box.getBoundingClientRect().top,
-      `<div class="t">${p.date} · ${p.category}${p.english ? ' · 英文' : ''}${p.risks.length ? ' · ⚠️ 风险' : ''}</div>${p.text.replace(/</g, '&lt;').slice(0, 140)}<br>曝光 <b>${fmt(p.impressions)}</b> · 互动 ${p.engagements} · 新关注 ${p.new_follows}<br><span class="t">点击打开原帖</span>`));
+      `<div class="t">${esc(p.date)} · ${esc(p.category)}${p.english ? ' · 英文' : ''}${p.risks.length ? ' · ⚠️ 风险' : ''}</div>${esc(p.text.slice(0, 140))}<br>曝光 <b>${esc(fmt(p.impressions))}</b> · 互动 ${esc(p.engagements)} · 新关注 ${esc(p.new_follows)}<br><span class="t">点击打开原帖</span>`));
     hit.addEventListener('mouseleave', () => tip.style.display = 'none');
   });
   if (target) { el('line', { x1: x(target), x2: x(target), y1: m.t, y2: H - m.b, stroke: css('--text-secondary'), 'stroke-width': 1.5, 'stroke-dasharray': '4 4' }, svg); const t = el('text', { x: x(target) - 6, y: H - m.b - 6, 'text-anchor': 'end' }, svg); t.textContent = '中位数目标 ' + fmt(target); t.style.fill = css('--text-secondary'); }
@@ -236,7 +242,7 @@ function table(id, head, rows, numCols) {
     const t = el('text', { x: x(i), y: Hh - 6, 'text-anchor': 'middle' }, svg); t.textContent = h.report_date.slice(5);
     el('circle', { cx: x(i), cy: y(h.eligibility_verified_home_90d), r: 4, fill: css('--series-1'), stroke: css('--surface-1'), 'stroke-width': 2 }, svg);
     const hit = el('circle', { cx: x(i), cy: y(h.eligibility_verified_home_90d), r: 14, fill: 'transparent' }, svg);
-    hit.addEventListener('mousemove', ev => placeTip(tip, box, ev.clientX - box.getBoundingClientRect().left, ev.clientY - box.getBoundingClientRect().top, `<div class="t">${h.report_date}</div>近 90 天认证首页曝光 <b>${fmt(h.eligibility_verified_home_90d)}</b>`));
+    hit.addEventListener('mousemove', ev => placeTip(tip, box, ev.clientX - box.getBoundingClientRect().left, ev.clientY - box.getBoundingClientRect().top, `<div class="t">${esc(h.report_date)}</div>近 90 天认证首页曝光 <b>${esc(fmt(h.eligibility_verified_home_90d))}</b>`));
     hit.addEventListener('mouseleave', () => tip.style.display = 'none');
   });
 })();
@@ -248,25 +254,28 @@ function table(id, head, rows, numCols) {
 
 def render_page(root, d, a, md_text, nav, history_list):
     body = markdown.markdown(md_text, extensions=["tables", "sane_lists"])
-    body = body.replace("<h2>8. 下周调整建议</h2>", '<h2>8. 下周调整建议</h2><div class="suggest">', 1)
-    if '<div class="suggest">' in body:
-        body = re.sub(r"(<hr\s*/?>)", r"</div>\1", body, count=1)
+    # python-markdown 原样保留独占行的 HTML 注释；以标记定位，建议内部可含分隔线。
+    m = re.search(re.escape(SUG_START) + r".*?" + re.escape(SUG_END) + r"\s*", body, re.S)
+    if m:
+        heading = re.search(r"<h2>8\. 下周调整建议</h2>\s*$", body[:m.start()])
+        start = heading.start() + len("<h2>8. 下周调整建议</h2>") if heading else m.start()
+        body = body[:start] + '<div class="suggest">' + body[start:m.end()] + "</div>" + body[m.end():]
     data = dict(a)
     phase_weekly = None
-    cfg = json.loads((root / "config.json").read_text())
+    cfg = json.loads((root / "config.json").read_text(encoding="utf-8"))
     for ph in cfg["phase_targets"]["phases"]:
         if ph["name"] == a["phase"]["name"]:
             phase_weekly = ph["weekly"]
     data["phase_weekly"] = phase_weekly
-    payload = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
-    return (TEMPLATE
-            .replace("__TITLE__", html.escape(f"X 周报 {d} · @{a['handle']}"))
-            .replace("__HANDLE__", html.escape(a["handle"]))
-            .replace("__SUBTITLE__", html.escape(f"周报 {d} · 统计周期 {a['window'][0]} 至 {a['window'][1]} · {a['phase']['name']}"))
-            .replace("__NAV__", nav)
-            .replace("__REPORT__", body)
-            .replace("__HISTORY_LIST__", history_list)
-            .replace("__DATA__", payload))
+    payload = json.dumps(data, ensure_ascii=False).replace("<", "\\u003c")
+    values = {
+        "TITLE": html.escape(f"X 周报 {d} · @{a['handle']}"),
+        "HANDLE": html.escape(a["handle"]),
+        "SUBTITLE": html.escape(f"周报 {d} · 统计周期 {a['window'][0]} 至 {a['window'][1]} · {a['phase']['name']}"),
+        "NAV": nav, "REPORT": body, "HISTORY_LIST": history_list, "DATA": payload,
+    }
+    # 单次替换，避免把帖子或建议里的 __DATA__ 等原文再次当成模板变量。
+    return re.sub(r"__(TITLE|HANDLE|SUBTITLE|NAV|REPORT|HISTORY_LIST|DATA)__", lambda m: values[m[1]], TEMPLATE)
 
 
 def main():
@@ -275,12 +284,17 @@ def main():
     ap.add_argument("--date")
     args = ap.parse_args()
     root = Path(args.root)
-    reports = sorted(p for p in (root / "reports").iterdir() if (p / "analysis.json").exists())
+    reports_dir = root / "reports"
+    reports = sorted(p for p in reports_dir.iterdir() if p.is_dir() and (p / "analysis.json").is_file()) if reports_dir.exists() else []
     if not reports:
         raise SystemExit("还没有任何报告，先运行 scripts/run_weekly.sh")
     target = root / "reports" / (args.date or reports[-1].name)
-    a = json.loads((target / "analysis.json").read_text())
-    md_text = (target / "report.md").read_text()
+    for report in {target, reports[-1]}:
+        for name in ("analysis.json", "report.md"):
+            if not (report / name).is_file():
+                raise SystemExit(f"报告文件不存在：{report / name}，请先运行 scripts/analyze.py")
+    a = json.loads((target / "analysis.json").read_text(encoding="utf-8"))
+    md_text = (target / "report.md").read_text(encoding="utf-8")
     if "（待助手填写" in md_text:
         print("提醒：下周调整建议尚未填写，网页里会显示占位文字")
 
@@ -292,15 +306,15 @@ def main():
     page = render_page(root, target.name, a, md_text,
                        '<a href="../../index.html">← 返回工作台首页（最新一期）</a>',
                        hist_block.replace("{prefix}", "../../"))
-    (target / "report.html").write_text(page)
+    atomic_write_text(target / "report.html", page)
 
     # 首页始终展示最新一期
     latest = reports[-1]
-    la = json.loads((latest / "analysis.json").read_text())
-    index = render_page(root, latest.name, la, (latest / "report.md").read_text(),
+    la = json.loads((latest / "analysis.json").read_text(encoding="utf-8"))
+    index = render_page(root, latest.name, la, (latest / "report.md").read_text(encoding="utf-8"),
                         f"最新一期：{latest.name} · 共 {len(reports)} 期周报",
                         hist_block.replace("{prefix}", ""))
-    (root / "index.html").write_text(index)
+    atomic_write_text(root / "index.html", index)
     print(json.dumps({"report_html": str(target / "report.html"), "index": str(root / "index.html")}, ensure_ascii=False))
 
 
